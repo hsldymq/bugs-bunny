@@ -23,6 +23,11 @@ class WorkerFactory implements WorkerFactoryInterface
      */
     private $eventHandlers = [];
 
+    /**
+     * @var callable
+     */
+    private $msgHandler;
+
     public function makeWorker(string $id, $socketFD): AbstractWorker
     {
         $p = new Processor($id, $socketFD);
@@ -35,6 +40,10 @@ class WorkerFactory implements WorkerFactoryInterface
             $p->on($e, $h);
         }
 
+        if ($this->msgHandler) {
+            $this->setMessageHandler($this->msgHandler);
+        }
+
         return $p;
     }
 
@@ -43,8 +52,23 @@ class WorkerFactory implements WorkerFactoryInterface
         $this->signalHandlers[] = [$signal, $handler];
     }
 
+    public function clearSignal()
+    {
+        $this->signalHandlers = [];
+    }
+
     public function registerEvent(string $event, callable $handler)
     {
         $this->eventHandlers[] = [$event, $handler];
+    }
+
+    public function clearEvent()
+    {
+        $this->eventHandlers = [];
+    }
+
+    public function setMessageHandler(callable $handler)
+    {
+        $this->msgHandler = $handler;
     }
 }
