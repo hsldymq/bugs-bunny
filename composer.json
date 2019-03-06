@@ -1,0 +1,13 @@
+{
+  "name": "hsldymq/whisper-rabbitmq-consumer",
+  "require": {
+    "php": ">=7.0.0",
+    "bunny/bunny": "^0.4.1",
+    "hsldymq/whisper": "^0.0.1"
+  },
+  "autoload": {
+    "psr-4": {
+      "Scheme1\\": "./src"
+    }
+  }
+}
