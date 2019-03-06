@@ -7,7 +7,7 @@
   },
   "autoload": {
     "psr-4": {
-      "Scheme1\\": "./src"
+      "Archman\\BugsBunny": "./src"
     }
   }
 }
