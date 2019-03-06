@@ -1,7 +1,14 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: hsldymq
- * Date: 3/6/19
- * Time: 10:55 PM
- */
+
+namespace Archman\BugsBunny;
+
+use Archman\Whisper\AbstractWorker;
+use Archman\Whisper\Message;
+
+class Processor extends AbstractWorker
+{
+    public function handleMessage(Message $msg)
+    {
+
+    }
+}
