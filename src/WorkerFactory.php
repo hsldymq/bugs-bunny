@@ -1,7 +1,14 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: hsldymq
- * Date: 3/6/19
- * Time: 10:53 PM
- */
+
+namespace Archman\BugsBunny;
+
+use Archman\Whisper\AbstractWorker;
+use Archman\Whisper\Interfaces\WorkerFactoryInterface;
+
+class WorkerFactory implements WorkerFactoryInterface
+{
+    public function makeWorker(string $id, $socketFD): AbstractWorker
+    {
+        return new Processor($id, $socketFD);
+    }
+}
