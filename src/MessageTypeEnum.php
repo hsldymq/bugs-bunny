@@ -2,7 +2,7 @@
 
 namespace Archman\BugsBunny;
 
-class MessageType
+class MessageTypeEnum
 {
     // 正常队列消息
     const QUEUE = 0;
