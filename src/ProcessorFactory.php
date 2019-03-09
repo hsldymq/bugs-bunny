@@ -5,7 +5,7 @@ namespace Archman\BugsBunny;
 use Archman\Whisper\AbstractWorker;
 use Archman\Whisper\Interfaces\WorkerFactoryInterface;
 
-class WorkerFactory implements WorkerFactoryInterface
+class ProcessorFactory implements WorkerFactoryInterface
 {
     /**
      * @var array [
