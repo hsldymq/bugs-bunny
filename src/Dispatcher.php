@@ -147,8 +147,8 @@ class Dispatcher extends AbstractMaster
 
         $this->processorsInfo = [];
         $this->idMap = [];
-
         $this->state = 'running';
+
         while ($this->state !== 'shutdown') {
             $this->process($this->patrolPeriod);
 
@@ -159,8 +159,6 @@ class Dispatcher extends AbstractMaster
                 }
             }
         }
-
-        $this->disconnect();
     }
 
     /**
@@ -209,10 +207,17 @@ class Dispatcher extends AbstractMaster
         $this->state = 'shutting';
         $this->disconnect();
 
-        // TODO 关闭rabbitmq 连接
-        // TODO 遍历发送LAST_MSG
-        foreach ($this->processorInfo as $each) {
-
+        foreach ($this->processorsInfo as $workerID => $each) {
+            try {
+                $this->sendMessage($workerID, new Message(MessageTypeEnum::LAST_MSG, ''));
+            } catch (\Throwable $e) {
+                // TODO 如果没有成功向所有进程发送关闭,考虑在其他地方需要做重试机制
+                if ($this->logger) {
+                    $msg = "Failed to send message(to {$workerID}). {$e->getMessage()}.";
+                    $this->logger->error($msg, ['trace' => $e->getTrace()]);
+                }
+                $this->emit('errorShuttingDown', [$e]);
+            }
         }
     }
 
@@ -237,7 +242,7 @@ class Dispatcher extends AbstractMaster
                     }
                     break;
                 default:
-                    $this->emit('onMessage', [$workerID, $msg, $this]);
+                    $this->emit('message', [$workerID, $msg, $this]);
             }
         } catch (\Throwable $e) {
             if ($this->logger) {
@@ -245,7 +250,7 @@ class Dispatcher extends AbstractMaster
                     'errorTrace' => $e->getTrace(),
                 ]);
             }
-            $this->emit('onMessageHandleError', [$e]);
+            $this->emit('errorMessageHandling', [$e]);
         }
     }
 
@@ -334,11 +339,14 @@ class Dispatcher extends AbstractMaster
         ];
     }
 
-    protected function onConsumed()
+    protected function onConsume()
     {
 
     }
 
+    /**
+     * @return string
+     */
     protected function getState(): string
     {
         return $this->state;
@@ -373,17 +381,27 @@ class Dispatcher extends AbstractMaster
         return false;
     }
 
+    /**
+     * @param string $workerID
+     * @param int $pid
+     */
     protected function clearWorker(string $workerID, int $pid)
     {
         if (isset($this->processorsInfo[$workerID])) {
             $level = $this->processorsInfo[$workerID]['level'];
             unset($this->processorsInfo[$workerID]);
+
+            // TODO
             unset($this->sendingPriority[$level][$workerID]);
         }
 
         unset($this->idMap[$pid]);
     }
 
+    /**
+     * @param array $options
+     * @param array $queues
+     */
     protected function makeConnection(array $options, array $queues)
     {
         $onReject = function ($reason) {
