@@ -15,7 +15,7 @@ class Dispatcher extends AbstractMaster
     /**
      * @var array
      */
-    private $connectionOptions;
+    protected $connectionOptions;
 
     /**
      * @var array
@@ -34,7 +34,7 @@ class Dispatcher extends AbstractMaster
      *      ]
      * ]
      */
-    private $connectionInfo = [
+    protected $connectionInfo = [
         'connections' => [],
         'tags' => [],
     ];
@@ -43,14 +43,32 @@ class Dispatcher extends AbstractMaster
      * @var array
      * [
      *      $workerID => [
-     *          'retired' => (bool),        // 是否停止向该processor投放队列消息
-     *          'sentMessages' => (int),    // 已向该processor投放的消息数量
-     *          'level' => (int),           // 投放消息的优先级
+     *          'retired' => (bool),        // 是否停止向该worker投放队列消息
+     *          'sentMessages' => (int),    // 已向该worker投放的消息数量
+     *          'level' => (int),           // worker的处理消息优先级别(与$sendingPriority配合使用,用作该变量的key用于O(1)复杂度的查找)
      *      ],
      *      ...
      * ]
      */
-    private $processorsInfo = [];
+    protected $workersInfo = [];
+
+    /**
+     * @var WorkerFactoryInterface
+     */
+    protected $workerFactory;
+
+    /**
+     * @var int $maxWorkers 子进程数量上限. -1为不限制
+     *
+     * 当子进程到达上线后,调度器会停止接受消息队列的消息.
+     * 等待有子进程闲置后,继续派发消息.
+     */
+    protected $maxWorkers = -1;
+
+    /**
+     * @var int 每个worker的消息队列容量
+     */
+    protected $workerCapacity = 1;
 
     /**
      * @var array
@@ -59,7 +77,24 @@ class Dispatcher extends AbstractMaster
      *      ...
      * ]
      */
-    private $idMap = [];
+    protected $idMap = [];
+
+    /**
+     * @var array 主要用于快速调度查询一个空闲worker派发消息.
+     * [
+     *      $level => [
+     *          $workerID => true,
+     *      ],
+     *      ...
+     * ]
+     *
+     * 实现算法:
+     * 用$workerCapacity将指定该索引数组的大小
+     * 每一个元素都是一个关联数组,保存这个级别的worker
+     * 每一个key既用来作为$workersInfo中的level快速定位worker, 也代表了当前这个级别中的worker的消息队列容量,数字越高代表其中的worker越空闲
+     * 在派发消息的时候,逆序的遍历这个数组,取当前最空闲的worker派发消息, 如果没有空闲worker就fork一个,并将信息存放进来.
+     */
+    protected $sendingPriority = [];
 
     /**
      * @var array 统计信息.
@@ -70,7 +105,7 @@ class Dispatcher extends AbstractMaster
      *      'memoryPeakUsage' => (int)  // 内存使用峰值,不含未使用的页(字节)
      * ]
      */
-    private $stat = [
+    protected $stat = [
         'consumed' => 0,
         'processed' => 0,
     ];
@@ -78,35 +113,17 @@ class Dispatcher extends AbstractMaster
     /**
      * @var LoggerInterface|null
      */
-    private $logger = null;
+    protected $logger = null;
 
     /**
      * @var int 僵尸进程检查周期(秒)
      */
-    private $patrolPeriod = 300;
-
-    /**
-     * @var WorkerFactoryInterface
-     */
-    private $processorFactory;
-
-    /**
-     * @var int $maxProcessors 子进程数量上限. -1为不限制
-     *
-     * 当子进程到达上线后,调度器会停止接受消息队列的消息.
-     * 等待有子进程闲置后,继续派发消息.
-     */
-    private $maxProcessors = -1;
-
-    /**
-     * @var int 每个processor的消息队列容量
-     */
-    private $processorCapacity = 1;
+    protected $patrolPeriod = 300;
 
     /**
      * @var string 运行状态 running / shutting / shutdown.
      */
-    private $state = 'shutdown';
+    protected $state = 'shutdown';
 
     /**
      * @param array $connectionOptions amqp server连接配置
@@ -126,7 +143,7 @@ class Dispatcher extends AbstractMaster
     {
         parent::__construct();
 
-        $this->processorFactory = $factory;
+        $this->workerFactory = $factory;
         $this->connectionOptions = $connectionOptions;
 
         $this->on('workerExit', function (string $workerID) {
@@ -145,7 +162,7 @@ class Dispatcher extends AbstractMaster
             return;
         }
 
-        $this->processorsInfo = [];
+        $this->workersInfo = [];
         $this->idMap = [];
         $this->state = 'running';
 
@@ -207,7 +224,7 @@ class Dispatcher extends AbstractMaster
         $this->state = 'shutting';
         $this->disconnect();
 
-        foreach ($this->processorsInfo as $workerID => $each) {
+        foreach ($this->workersInfo as $workerID => $each) {
             try {
                 $this->sendMessage($workerID, new Message(MessageTypeEnum::LAST_MSG, ''));
             } catch (\Throwable $e) {
@@ -236,7 +253,7 @@ class Dispatcher extends AbstractMaster
                         $this->clearWorker($workerID, $this->getWorkerPID($workerID) ?? 0);
                     }
 
-                    if ($this->state === 'shutting' && count($this->processorsInfo) === 0) {
+                    if ($this->state === 'shutting' && count($this->workersInfo) === 0) {
                         $this->stopProcess();
                         $this->state = 'shutdown';
                     }
@@ -273,29 +290,29 @@ class Dispatcher extends AbstractMaster
      *
      * @return self
      */
-    public function setMaxProcessors(int $num): self
+    public function setMaxWorkers(int $num): self
     {
         if ($num > 0 || $num === -1) {
-            $this->maxProcessors = $num;
+            $this->maxWorkers = $num;
         }
 
         return $this;
     }
 
     /**
-     * 设置每个processor的消息队列容量.
+     * 设置每个worker的消息队列容量.
      *
-     * 例如: 当这个值为10,一个processor正在处理一条消息,dispatcher可以继续向它发送9条消息等待它处理.
+     * 例如: 当这个值为10,一个worker正在处理一条消息,dispatcher可以继续向它发送9条消息等待它处理.
      * 不建议将这个值设置的.
      *
      * @param int $n 必须大于等于1
      *
      * @return self
      */
-    public function setProcessorCapacity(int $n): self
+    public function setWorkerCapacity(int $n): self
     {
         if ($n > 0) {
-            $this->processorCapacity = $n;
+            $this->workerCapacity = $n;
         }
 
         return $this;
@@ -353,17 +370,17 @@ class Dispatcher extends AbstractMaster
     }
 
     /**
-     * 是否已到达processor上限.
+     * 是否已到达worker数量上限.
      *
      * @return bool
      */
     protected function limitReached(): bool
     {
-        if ($this->maxProcessors === -1) {
+        if ($this->maxWorkers === -1) {
             return false;
         }
 
-        return count($this->processorsInfo) >= $this->maxProcessors;
+        return count($this->workersInfo) >= $this->maxWorkers;
     }
 
     /**
@@ -382,16 +399,37 @@ class Dispatcher extends AbstractMaster
     }
 
     /**
+     * 增加/减少worker处理消息的优先级.
+     *
+     * @param string $workerID
+     * @param bool $increase true:加1, false:减1
+     */
+    protected function stepSendingPriority(string $workerID, bool $increase)
+    {
+        if (!isset($this->workersInfo[$workerID])) {
+            return;
+        }
+
+        $oldLevel = $this->workersInfo[$workerID]['level'];
+        if ($increase) {
+            $newLevel = min($this->workerCapacity, $oldLevel + 1);
+        } else {
+            $newLevel = max(0, $oldLevel - 1);
+        }
+        $this->sendingPriority[$newLevel][$workerID] = true;
+        unset($this->sendingPriority[$oldLevel][$workerID]);
+        $this->workersInfo[$workerID]['level'] = $newLevel;
+    }
+
+    /**
      * @param string $workerID
      * @param int $pid
      */
     protected function clearWorker(string $workerID, int $pid)
     {
-        if (isset($this->processorsInfo[$workerID])) {
-            $level = $this->processorsInfo[$workerID]['level'];
-            unset($this->processorsInfo[$workerID]);
-
-            // TODO
+        if (isset($this->workersInfo[$workerID])) {
+            $level = $this->workersInfo[$workerID]['level'];
+            unset($this->workersInfo[$workerID]);
             unset($this->sendingPriority[$level][$workerID]);
         }
 
