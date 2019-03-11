@@ -205,7 +205,7 @@ class Dispatcher extends AbstractMaster
                     $msg = "Failed to send message(to {$workerID}). {$e->getMessage()}.";
                     $this->logger->error($msg, ['trace' => $e->getTrace()]);
                 }
-                $this->emit('errorShuttingDown', [$e]);
+                $this->emit('errorShuttingDown', [$e, $this]);
             }
         }
     }
@@ -261,7 +261,7 @@ class Dispatcher extends AbstractMaster
             switch ($type) {
                 case MessageTypeEnum::PROCESSED:
                     $this->stat['processed']++;
-                    $this->emit('processed');
+                    $this->emit('processed', [$this]);
                     break;
                 case MessageTypeEnum::STOP_SENDING:
                     $this->retireWorker($workerID);
@@ -274,7 +274,7 @@ class Dispatcher extends AbstractMaster
                         if ($this->logger) {
                             $this->logger->error($e->getMessage(), ['trace' => $e->getTrace()]);
                         }
-                        $this->emit('errorSendingMessage', [$e]);
+                        $this->emit('errorSendingMessage', [$e, $this]);
                     }
                     break;
                 case MessageTypeEnum::KILL_ME:
@@ -293,7 +293,7 @@ class Dispatcher extends AbstractMaster
                     'trace' => $e->getTrace(),
                 ]);
             }
-            $this->emit('errorMessageHandling', [$e]);
+            $this->emit('errorMessageHandling', [$e, $this]);
         }
     }
 
@@ -391,7 +391,7 @@ class Dispatcher extends AbstractMaster
             $this->stopConsuming();
             // 边沿触发
             if (!$before) {
-                $this->emit('limitReached', [$this->countWorkers()]);
+                $this->emit('limitReached', [$this->countWorkers(), $this]);
             }
         }
 
@@ -415,7 +415,7 @@ class Dispatcher extends AbstractMaster
             if ($this->logger) {
                 $this->logger->error($e->getMessage(), ['trace' => $e->getTrace()]);
             }
-            $this->emit('errorDispatchingMessage', [$e]);
+            $this->emit('errorDispatchingMessage', [$e, $this]);
         }
         $this->workersInfo[$workerID]['sent']++;
         $this->stepSendingPriority($workerID, false);
