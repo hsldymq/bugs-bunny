@@ -5,7 +5,7 @@ namespace Archman\BugsBunny;
 use Archman\Whisper\AbstractWorker;
 use Archman\Whisper\Message;
 
-class Processor extends AbstractWorker
+class Worker extends AbstractWorker
 {
     /** @var callable */
     private $messageHandler;

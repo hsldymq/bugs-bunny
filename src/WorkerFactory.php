@@ -5,7 +5,7 @@ namespace Archman\BugsBunny;
 use Archman\Whisper\AbstractWorker;
 use Archman\Whisper\Interfaces\WorkerFactoryInterface;
 
-class ProcessorFactory implements WorkerFactoryInterface
+class WorkerFactory implements WorkerFactoryInterface
 {
     /**
      * @var array [
@@ -30,7 +30,7 @@ class ProcessorFactory implements WorkerFactoryInterface
 
     public function makeWorker(string $id, $socketFD): AbstractWorker
     {
-        $p = new Processor($id, $socketFD);
+        $p = new Worker($id, $socketFD);
 
         foreach ($this->signalHandlers as $s => $h) {
             $p->addSignalHandler($s, $h);
