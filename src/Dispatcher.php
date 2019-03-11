@@ -8,8 +8,18 @@ use Archman\Whisper\Interfaces\WorkerFactoryInterface;
 use Archman\Whisper\Message;
 use Bunny\Async\Client;
 use Bunny\Channel;
+use Bunny\Message as AMQPMessage;
 use Psr\Log\LoggerInterface;
 
+/**
+ * @event errorShuttingDown
+ * @event processed
+ * @event errorSendingMessage
+ * @event message
+ * @event errorMessageHandling
+ * @event limitReached
+ * @event errorDispatchingMessage
+ */
 class Dispatcher extends AbstractMaster
 {
     /**
@@ -38,6 +48,9 @@ class Dispatcher extends AbstractMaster
         'connections' => [],
         'tags' => [],
     ];
+
+    /** @var array 要消费的队列 */
+    protected $queues = [];
 
     /**
      * @var array
@@ -178,19 +191,40 @@ class Dispatcher extends AbstractMaster
         }
     }
 
+    public function shutdown()
+    {
+        $this->state = 'shutting';
+        $this->disconnect();
+
+        foreach ($this->workersInfo as $workerID => $each) {
+            try {
+                $this->sendMessage($workerID, new Message(MessageTypeEnum::LAST_MSG, ''));
+            } catch (\Throwable $e) {
+                // TODO 如果没有成功向所有进程发送关闭,考虑在其他地方需要做重试机制
+                if ($this->logger) {
+                    $msg = "Failed to send message(to {$workerID}). {$e->getMessage()}.";
+                    $this->logger->error($msg, ['trace' => $e->getTrace()]);
+                }
+                $this->emit('errorShuttingDown', [$e]);
+            }
+        }
+    }
+
     /**
      * @param array $queues 要拉取消息的队列名称列表
      */
     public function connect(array $queues)
     {
+        $this->queues = $queues;
         $connections = $this->connectionOptions['connections'] ?? 1;
-        $options = array_intersect_assoc($this->connectionOptions, [
+        $options = array_intersect_key($this->connectionOptions, [
             'host' => true,
             'port' => true,
             'vhost' => true,
             'user' => true,
             'password' => true,
         ]);
+
         for ($i = 0; $i < $connections; $i++) {
             $this->makeConnection($options, $queues);
         }
@@ -219,25 +253,6 @@ class Dispatcher extends AbstractMaster
         $this->connect($queues);
     }
 
-    public function shutdown()
-    {
-        $this->state = 'shutting';
-        $this->disconnect();
-
-        foreach ($this->workersInfo as $workerID => $each) {
-            try {
-                $this->sendMessage($workerID, new Message(MessageTypeEnum::LAST_MSG, ''));
-            } catch (\Throwable $e) {
-                // TODO 如果没有成功向所有进程发送关闭,考虑在其他地方需要做重试机制
-                if ($this->logger) {
-                    $msg = "Failed to send message(to {$workerID}). {$e->getMessage()}.";
-                    $this->logger->error($msg, ['trace' => $e->getTrace()]);
-                }
-                $this->emit('errorShuttingDown', [$e]);
-            }
-        }
-    }
-
     public function onMessage(string $workerID, Message $msg)
     {
         $type = $msg->getType();
@@ -245,15 +260,26 @@ class Dispatcher extends AbstractMaster
         try {
             switch ($type) {
                 case MessageTypeEnum::PROCESSED:
+                    $this->stat['processed']++;
+                    $this->emit('processed');
                     break;
                 case MessageTypeEnum::STOP_SENDING:
+                    $this->retireWorker($workerID);
+                    try {
+                        $this->sendMessage($workerID, new Message(MessageTypeEnum::LAST_MSG, json_encode([
+                            'messageID' => Helper::uuid(),
+                            'meta' => ['sent' => $this->workersInfo[$workerID]['sent']],
+                        ])));
+                    } catch (\Throwable $e) {
+                        if ($this->logger) {
+                            $this->logger->error($e->getMessage(), ['trace' => $e->getTrace()]);
+                        }
+                        $this->emit('errorSendingMessage', [$e]);
+                    }
                     break;
                 case MessageTypeEnum::KILL_ME:
-                    if ($this->killWorker($workerID, SIGKILL, true)) {
-                        $this->clearWorker($workerID, $this->getWorkerPID($workerID) ?? 0);
-                    }
-
-                    if ($this->state === 'shutting' && count($this->workersInfo) === 0) {
+                    $this->killWorker($workerID, SIGKILL, true);
+                    if ($this->state === 'shutting' && $this->countWorkers() === 0) {
                         $this->stopProcess();
                         $this->state = 'shutdown';
                     }
@@ -264,7 +290,7 @@ class Dispatcher extends AbstractMaster
         } catch (\Throwable $e) {
             if ($this->logger) {
                 $this->logger->error($e->getMessage(), [
-                    'errorTrace' => $e->getTrace(),
+                    'trace' => $e->getTrace(),
                 ]);
             }
             $this->emit('errorMessageHandling', [$e]);
@@ -356,9 +382,45 @@ class Dispatcher extends AbstractMaster
         ];
     }
 
-    protected function onConsume()
+    public function onConsume(AMQPMessage $message, Channel $channel, Client $client)
     {
+        $this->stat['consumed']++;
+        $before = $this->limitReached();
+        $workerID = $this->scheduleWorker();
+        if ($this->limitReached()) {
+            $this->stopConsuming();
+            // 边沿触发
+            if (!$before) {
+                $this->emit('limitReached', [$this->countWorkers()]);
+            }
+        }
 
+        $messageContent = json_encode([
+            'messageID' => Helper::uuid(),
+            'meta' => [
+                'amqp' => [
+                    'exchange' => $message->exchange,
+                    'queueName' => $this->connectionInfo['tags'][$message->consumerTag],
+                    'routingKey' => $message->routingKey,
+                ],
+                'sent' => $this->workersInfo[$workerID]['sent'] + 1,
+            ],
+            'content' => $message->content,
+        ]);
+        var_dump($messageContent);
+
+        try {
+            $this->sendMessage($workerID, new Message(MessageTypeEnum::QUEUE, $messageContent));
+        } catch (\Throwable $e) {
+            if ($this->logger) {
+                $this->logger->error($e->getMessage(), ['trace' => $e->getTrace()]);
+            }
+            $this->emit('errorDispatchingMessage', [$e]);
+        }
+        $this->workersInfo[$workerID]['sent']++;
+        $this->stepSendingPriority($workerID, false);
+
+        $channel->ack($message)->done();
     }
 
     /**
@@ -370,17 +432,35 @@ class Dispatcher extends AbstractMaster
     }
 
     /**
-     * 是否已到达worker数量上限.
-     *
      * @return bool
      */
-    protected function limitReached(): bool
+    protected function workerLimitReached(): bool
     {
         if ($this->maxWorkers === -1) {
             return false;
         }
 
-        return count($this->workersInfo) >= $this->maxWorkers;
+        return $this->countWorkers() >= $this->maxWorkers;
+    }
+
+    /**
+     * @return bool
+     */
+    protected function isWorkerQueueFull(): bool
+    {
+        return $this->countWorkers() <= count($this->sendingPriority[0]);
+    }
+
+    /**
+     * 是否已到达派发消息上限.
+     *
+     * 上限是指创建的worker数量已达上限,并且已没有空闲worker可以调度
+     *
+     * @return bool
+     */
+    protected function limitReached(): bool
+    {
+        return $this->workerLimitReached() && $this->isWorkerQueueFull();
     }
 
     /**
@@ -437,6 +517,68 @@ class Dispatcher extends AbstractMaster
     }
 
     /**
+     * 指定worker退休,即不再向派发消息.
+     *
+     * @param string $workerID
+     */
+    protected function retireWorker(string $workerID)
+    {
+        if (isset($this->workersInfo[$workerID])) {
+            $this->workersInfo[$workerID]['retired'] = true;
+        }
+    }
+
+    /**
+     * 指定worker是否退休.
+     *
+     * @param string $workerID
+     *
+     * @return bool
+     */
+    protected function isWorkerRetired(string $workerID): bool
+    {
+        return $this->workersInfo[$workerID]['retired'] ?? true;
+    }
+
+    /**
+     * 安排一个worker,如果没有空闲worker,创建一个.
+     *
+     * @return string worker id
+     */
+    protected function scheduleWorker(): string
+    {
+        $workerID = null;
+        for ($i = count($this->sendingPriority) - 1; $i > 0; $i--) {
+            if (!end($this->sendingPriority[$i])) {
+                continue;
+            }
+            do {
+                $wid = key($this->sendingPriority[$i]);
+                $c = $this->getCommunicator($wid);
+                if ($c && $c->isWritable() && !$this->isWorkerRetired($workerID)) {
+                    $workerID = $wid;
+                    break 2;
+                }
+            } while (prev($this->sendingPriority[$i]));
+        }
+
+        if (!$workerID) {
+            $workerID = $this->createWorker($this->workerFactory);
+            $pid = $this->getWorkerPID($workerID);
+            $level = $this->workerCapacity;
+            $this->sendingPriority[$level][$workerID] = true;
+            $this->idMap[$pid] = $workerID;
+            $this->workersInfo[$workerID] = [
+                'level' => $level,      // 发送优先级
+                'sent' => 0,            // 已经向他发送的消息数量
+                'retired' => false,     // 是否停止向这个worker发送正常的consume消息
+            ];
+        }
+
+        return $workerID;
+    }
+
+    /**
      * @param array $options
      * @param array $queues
      */
@@ -460,33 +602,81 @@ class Dispatcher extends AbstractMaster
             throw new \Exception($msg, 0, $prev ?? null);
         };
 
-        $chan = null;
-        $tags = [];
         $client = new Client($this->getEventLoop(), $options);
         $client->connect()
             ->then(function (Client $client) {
                 return $client->channel();
             }, $onReject)
-            ->then(function (Channel $channel) {
+            ->then(function (Channel $channel) use ($onReject) {
                 return $channel->qos(0, 1)->then(function () use ($channel) {
                     return $channel;
-                });
+                }, $onReject);
             }, $onReject)
-            ->then(function (Channel $channel) use (&$chan, &$tags, $queues) {
-                $chan = $channel;
-                foreach ($queues as $queueName) {
-                    $tag = Helper::uuid();
-                    $channel->consume([$this, 'onConsume'], $queueName, $tag)->done();
-                    $tags[$tag] = $queueName;
-                }
+            ->then(function (Channel $channel) use ($client, $queues) {
+                $tags = $this->bindConsumer($channel, $queues, [$this, 'onConsume']);
+                $this->connectionInfo['connections'][] = [
+                    'client' => $client,
+                    'channel' => $channel,
+                    'tags' => array_keys($tags),
+                ];
+                $this->connectionInfo['tags'] = array_merge($this->connectionInfo['tags'], $tags);
             }, $onReject)
-            ->done();
+            ->done(function () {}, $onReject);
+    }
 
-        $this->connectionInfo['connections'][] = [
-            'client' => $client,
-            'channel' => $chan,
-            'tags' => array_keys($tags),
-        ];
-        $this->connectionInfo['tags'] = array_merge($this->connectionInfo['tags'], $tags);
+    /**
+     * 停止消费队列消息.
+     */
+    protected function stopConsuming()
+    {
+        foreach ($this->connectionInfo['connections'] as $each) {
+            $tags = $each['tags'];
+            $this->unbindConsumer($each['channel'], $tags);
+            foreach ($tags as $t) {
+                unset($this->connectionInfo['tags'][$t]);
+            }
+        }
+    }
+
+    /**
+     * 恢复消费队列消息
+     */
+    protected function resumeConsuming()
+    {
+        foreach ($this->connectionInfo['connections'] as $index => $each) {
+            $tags = $this->bindConsumer($each['channel'], $this->queues, [$this, 'onConsume']);
+            $this->connectionInfo['connections'][$index]['tags'] = array_keys($tags);
+            $this->connectionInfo['tags'] = array_merge($this->connectionInfo['tags'], $tags);
+        }
+    }
+
+    /**
+     * @param Channel $channel
+     * @param array $queues
+     * @param callable $handler
+     *
+     * @return array
+     */
+    protected function bindConsumer(Channel $channel, array $queues, callable $handler): array
+    {
+        $tags = [];
+        foreach ($queues as $queueName) {
+            $tag = Helper::uuid();
+            $channel->consume($handler, $queueName, $tag)->done();
+            $tags[$tag] = $queueName;
+        }
+
+        return $tags;
+    }
+
+    /**
+     * @param Channel $channel
+     * @param array $tags
+     */
+    protected function unbindConsumer(Channel $channel, array $tags)
+    {
+        foreach ($tags as $tag) {
+            $channel->cancel($tag)->done();
+        }
     }
 }
