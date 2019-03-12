@@ -319,6 +319,7 @@ class Dispatcher extends AbstractMaster
         try {
             $this->sendMessage($workerID, new Message(MessageTypeEnum::QUEUE, $messageContent));
         } catch (\Throwable $e) {
+            // TODO 考虑缓存消息,给空闲的worker处理
             $errorOccurred = true;
             if ($this->logger) {
                 $this->logger->error($e->getMessage(), ['trace' => $e->getTrace()]);
