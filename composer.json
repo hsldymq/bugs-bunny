@@ -3,7 +3,7 @@
   "require": {
     "php": ">=7.0.0",
     "bunny/bunny": "^0.4.1",
-    "hsldymq/whisper": "^0.0.1",
+    "hsldymq/whisper": "dev-master",
     "psr/log": "^1.1"
   },
   "autoload": {
