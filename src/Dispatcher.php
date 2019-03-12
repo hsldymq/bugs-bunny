@@ -12,12 +12,13 @@ use Bunny\Message as AMQPMessage;
 use Psr\Log\LoggerInterface;
 
 /**
- * @event errorShuttingDown
- * @event processed
- * @event errorSendingMessage
  * @event message
- * @event errorMessageHandling
+ * @event processed
  * @event limitReached
+ * @event workerQuit
+ * @event errorShuttingDown
+ * @event errorSendingMessage
+ * @event errorMessageHandling
  * @event errorDispatchingMessage
  */
 class Dispatcher extends AbstractMaster
@@ -160,6 +161,7 @@ class Dispatcher extends AbstractMaster
         $this->connectionOptions = $connectionOptions;
 
         $this->on('workerExit', function (string $workerID) {
+            $this->emit('workerQuit', [$workerID, $this]);
             $pid = $this->getWorkerPID($workerID);
             $this->clearWorker($workerID, $pid ?? 0);
         });
