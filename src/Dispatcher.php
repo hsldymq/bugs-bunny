@@ -253,9 +253,9 @@ class Dispatcher extends AbstractMaster
         $this->connect($queues);
     }
 
-    public function onMessage(string $workerID, Message $msg)
+    public function onMessage(string $workerID, Message $message)
     {
-        $type = $msg->getType();
+        $type = $message->getType();
 
         try {
             switch ($type) {
@@ -285,7 +285,7 @@ class Dispatcher extends AbstractMaster
                     }
                     break;
                 default:
-                    $this->emit('message', [$workerID, $msg, $this]);
+                    $this->emit('message', [$workerID, $message, $this]);
             }
         } catch (\Throwable $e) {
             if ($this->logger) {
@@ -295,6 +295,46 @@ class Dispatcher extends AbstractMaster
             }
             $this->emit('errorMessageHandling', [$e, $this]);
         }
+    }
+
+    public function onConsume(AMQPMessage $message, Channel $channel, Client $client)
+    {
+        $this->stat['consumed']++;
+        $before = $this->limitReached();
+        $workerID = $this->scheduleWorker();
+        if ($this->limitReached()) {
+            $this->stopConsuming();
+            // 边沿触发
+            if (!$before) {
+                $this->emit('limitReached', [$this->countWorkers(), $this]);
+            }
+        }
+
+        $messageContent = json_encode([
+            'messageID' => Helper::uuid(),
+            'meta' => [
+                'amqp' => [
+                    'exchange' => $message->exchange,
+                    'queue' => $this->connectionInfo['tags'][$message->consumerTag],
+                    'routingKey' => $message->routingKey,
+                ],
+                'sent' => $this->workersInfo[$workerID]['sent'] + 1,
+            ],
+            'content' => $message->content,
+        ]);
+
+        try {
+            $this->sendMessage($workerID, new Message(MessageTypeEnum::QUEUE, $messageContent));
+        } catch (\Throwable $e) {
+            if ($this->logger) {
+                $this->logger->error($e->getMessage(), ['trace' => $e->getTrace()]);
+            }
+            $this->emit('errorDispatchingMessage', [$e, $this]);
+        }
+        $this->workersInfo[$workerID]['sent']++;
+        $this->stepSendingPriority($workerID, false);
+
+        $channel->ack($message)->done();
     }
 
     /**
@@ -380,47 +420,6 @@ class Dispatcher extends AbstractMaster
             'consumed' => 0,
             'processed' => 0,
         ];
-    }
-
-    public function onConsume(AMQPMessage $message, Channel $channel, Client $client)
-    {
-        $this->stat['consumed']++;
-        $before = $this->limitReached();
-        $workerID = $this->scheduleWorker();
-        if ($this->limitReached()) {
-            $this->stopConsuming();
-            // 边沿触发
-            if (!$before) {
-                $this->emit('limitReached', [$this->countWorkers(), $this]);
-            }
-        }
-
-        $messageContent = json_encode([
-            'messageID' => Helper::uuid(),
-            'meta' => [
-                'amqp' => [
-                    'exchange' => $message->exchange,
-                    'queueName' => $this->connectionInfo['tags'][$message->consumerTag],
-                    'routingKey' => $message->routingKey,
-                ],
-                'sent' => $this->workersInfo[$workerID]['sent'] + 1,
-            ],
-            'content' => $message->content,
-        ]);
-        var_dump($messageContent);
-
-        try {
-            $this->sendMessage($workerID, new Message(MessageTypeEnum::QUEUE, $messageContent));
-        } catch (\Throwable $e) {
-            if ($this->logger) {
-                $this->logger->error($e->getMessage(), ['trace' => $e->getTrace()]);
-            }
-            $this->emit('errorDispatchingMessage', [$e, $this]);
-        }
-        $this->workersInfo[$workerID]['sent']++;
-        $this->stepSendingPriority($workerID, false);
-
-        $channel->ack($message)->done();
     }
 
     /**
