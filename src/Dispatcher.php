@@ -261,6 +261,7 @@ class Dispatcher extends AbstractMaster
             switch ($type) {
                 case MessageTypeEnum::PROCESSED:
                     $this->stat['processed']++;
+                    $this->stepSendingPriority($workerID, true);
                     $this->emit('processed', [$this]);
                     break;
                 case MessageTypeEnum::STOP_SENDING:
