@@ -1,5 +1,5 @@
 {
-  "name": "hsldymq/whisper-rabbitmq-consumer",
+  "name": "hsldymq/bugs-bunny",
   "require": {
     "php": ">=7.0.0",
     "bunny/bunny": "^0.4.1",
