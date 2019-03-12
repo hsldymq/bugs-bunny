@@ -301,16 +301,8 @@ class Dispatcher extends AbstractMaster
     public function onConsume(AMQPMessage $message, Channel $channel, Client $client)
     {
         $this->stat['consumed']++;
-        $before = $this->limitReached();
-        $workerID = $this->scheduleWorker();
-        if ($this->limitReached()) {
-            $this->stopConsuming();
-            // 边沿触发
-            if (!$before) {
-                $this->emit('limitReached', [$this->countWorkers(), $this]);
-            }
-        }
 
+        $workerID = $this->scheduleWorker();
         $messageContent = json_encode([
             'messageID' => Helper::uuid(),
             'meta' => [
@@ -327,13 +319,26 @@ class Dispatcher extends AbstractMaster
         try {
             $this->sendMessage($workerID, new Message(MessageTypeEnum::QUEUE, $messageContent));
         } catch (\Throwable $e) {
+            $errorOccurred = true;
             if ($this->logger) {
                 $this->logger->error($e->getMessage(), ['trace' => $e->getTrace()]);
             }
             $this->emit('errorDispatchingMessage', [$e, $this]);
         }
-        $this->workersInfo[$workerID]['sent']++;
-        $this->stepSendingPriority($workerID, false);
+
+        if ($errorOccurred ?? false) {
+            $this->workersInfo[$workerID]['sent']++;
+
+            $before = $this->limitReached();
+            $this->stepSendingPriority($workerID, false);
+            if ($this->limitReached()) {
+                $this->stopConsuming();
+                // 边沿触发
+                if (!$before) {
+                    $this->emit('limitReached', [$this->countWorkers(), $this]);
+                }
+            }
+        }
 
         $channel->ack($message)->done();
     }
