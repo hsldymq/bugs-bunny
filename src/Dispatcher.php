@@ -326,7 +326,7 @@ class Dispatcher extends AbstractMaster
             $this->emit('errorDispatchingMessage', [$e, $this]);
         }
 
-        if ($errorOccurred ?? false) {
+        if (!($errorOccurred ?? false)) {
             $this->workersInfo[$workerID]['sent']++;
 
             $before = $this->limitReached();
