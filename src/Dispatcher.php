@@ -554,7 +554,7 @@ class Dispatcher extends AbstractMaster
             do {
                 $wid = key($this->sendingPriority[$i]);
                 $c = $this->getCommunicator($wid);
-                if ($c && $c->isWritable() && !$this->isWorkerRetired($workerID)) {
+                if ($c && $c->isWritable() && !$this->isWorkerRetired($wid)) {
                     $workerID = $wid;
                     break 2;
                 }
