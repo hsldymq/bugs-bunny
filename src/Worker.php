@@ -143,6 +143,7 @@ class Worker extends AbstractWorker
         }
 
         $this->idleShutdown = true;
+        $this->idleShutdownSec = $seconds;
     }
 
     /**
@@ -151,6 +152,7 @@ class Worker extends AbstractWorker
     public function noIdleShutdown()
     {
         $this->idleShutdown = false;
+        $this->idleShutdownSec = 0;
         $this->clearShutdownTimer();
     }
 
