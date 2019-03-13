@@ -85,7 +85,7 @@ class WorkerScheduler
     public function remove(string $workerID)
     {
         $level = $this->levelMap[$workerID] ?? null;
-        if ($level !== null) {
+        if ($level === null) {
             return;
         }
 
