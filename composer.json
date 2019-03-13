@@ -6,6 +6,9 @@
     "hsldymq/whisper": "dev-master",
     "psr/log": "^1.1"
   },
+  "require-dev": {
+    "phpunit/phpunit": "^6.4"
+  },
   "autoload": {
     "psr-4": {
       "Archman\\BugsBunny\\": "./src"
