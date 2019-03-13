@@ -9,6 +9,7 @@ use React\EventLoop\TimerInterface;
 
 /**
  * @event message
+ * @event workerCreated
  * @event errorDecodingMessage
  * @event errorProcessingMessage
  */
@@ -53,6 +54,14 @@ class Worker extends AbstractWorker
      * @var TimerInterface
      */
     private $shutdownTimer = null;
+
+    public function __construct(string $id, $socketFD)
+    {
+        parent::__construct($id, $socketFD);
+
+        $this->emit('workerCreated', [$id, $this]);
+        $this->trySetShutdownTimer();
+    }
 
     public function handleMessage(Message $msg)
     {
