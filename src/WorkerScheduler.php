@@ -209,34 +209,40 @@ class WorkerScheduler
     public function changeLevels(int $newLevelNum)
     {
         $oldLevelNum = count($this->scheduleLevels);
-        if ($oldLevelNum === $newLevelNum || $newLevelNum <= 0) {
+        if ($oldLevelNum === $newLevelNum + 1 || $newLevelNum <= 0) {
             return;
         }
 
         $newScheduleLevels = array_fill(0, $newLevelNum + 1, []);
+        if ($oldLevelNum === 0) {
+            $this->scheduleLevels = $newScheduleLevels;
+            return;
+        }
 
-        for ($oldLevel = $oldLevelNum, $newLevel = $newLevelNum;
-             $oldLevelNum > 0 && $oldLevel >= 0;
-             $oldLevel--, $newLevel = max(0, $newLevel - 1)
-        ) {
-            $workers = $this->scheduleLevels[$oldLevel];
+        $diff = $newLevelNum + 1 - $oldLevelNum;
+        foreach ($this->scheduleLevels as $level => $workers) {
             foreach ($workers as $workerID => $state) {
                 if ($state === self::RETIRED) {
                     $newScheduleLevels[0][$workerID] = $state;
                     $this->levelMap[$workerID] = 0;
                 } else {
+                    if ($diff > 0) {
+                        $newLevel = min($level + $diff, $newLevelNum);
+                    } else {
+                        // $diff < 0
+                        $newLevel = max(0, $level + $diff);
+                    }
                     $newScheduleLevels[$newLevelNum][$workerID] = $state;
                     $this->levelMap[$workerID] = $newLevelNum;
 
-                    if ($oldLevelNum > 0 && $newLevelNum === 0) {
+                    if ($level > 0 && $newLevel === 0) {
                         $this->increase('busy');
-                    } else if ($oldLevelNum === 0 && $newLevelNum > 0) {
+                    } else if ($level === 0 && $newLevel > 0) {
                         $this->decrease('busy');
                     }
                 }
             }
         }
-
         $this->scheduleLevels = $newScheduleLevels;
     }
 
