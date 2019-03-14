@@ -15,6 +15,8 @@ use React\EventLoop\TimerInterface;
  */
 class Worker extends AbstractWorker
 {
+    use EventEmitterTrait;
+
     /**
      * @var LoggerInterface
      */
@@ -59,7 +61,7 @@ class Worker extends AbstractWorker
     {
         parent::__construct($id, $socketFD);
 
-        $this->emit('workerCreated', [$id, $this]);
+        $this->emit('workerCreated', [$id]);
         $this->trySetShutdownTimer();
     }
 
@@ -75,7 +77,7 @@ class Worker extends AbstractWorker
             if ($this->logger) {
                 $this->logger->error("Worker failed to decode message: ".json_last_error_msg(), ['content' => $cnt]);
             }
-            $this->emit('errorDecodingMessage', [$cnt, $this]);
+            $this->emit('errorDecodingMessage', [$cnt]);
             $this->trySetShutdownTimer();
 
             return;
@@ -106,7 +108,7 @@ class Worker extends AbstractWorker
                             'content' => $info
                         ]);
                     }
-                    $this->emit('errorProcessingMessage', [$cnt, $this]);
+                    $this->emit('errorProcessingMessage', [$cnt]);
                 }
 
                 ending:
@@ -121,7 +123,7 @@ class Worker extends AbstractWorker
                 break;
             default:
                 try {
-                    $this->emit('message', [$msg, $this]);
+                    $this->emit('message', [$msg]);
                 } catch (\Throwable $e) {
                     if ($this->logger) {
                         $this->logger->error("Handle delegate message($msgType) error: {$e->getMessage()}", [
