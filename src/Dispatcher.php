@@ -57,6 +57,11 @@ class Dispatcher extends AbstractMaster
         'tags' => [],
     ];
 
+    /**
+     * @var bool 是否已停止消费
+     */
+    private $consumingStopped = false;
+
     /** @var array 要消费的队列 */
     protected $queues = [];
 
@@ -275,6 +280,9 @@ class Dispatcher extends AbstractMaster
                     }
 
                     $this->workerScheduler->release($workerID);
+                    if (!$this->limitReached()) {
+                        $this->resumeConsuming();
+                    }
                     $this->emit('processed', [$workerID]);
                     break;
                 case MessageTypeEnum::STOP_SENDING:
@@ -559,6 +567,10 @@ class Dispatcher extends AbstractMaster
      */
     protected function stopConsuming()
     {
+        if ($this->consumingStopped) {
+            return;
+        }
+
         foreach ($this->connectionInfo['connections'] as $each) {
             $tags = $each['tags'];
             $this->unbindConsumer($each['channel'], $tags);
@@ -566,6 +578,7 @@ class Dispatcher extends AbstractMaster
                 unset($this->connectionInfo['tags'][$t]);
             }
         }
+        $this->consumingStopped = true;
     }
 
     /**
@@ -573,11 +586,16 @@ class Dispatcher extends AbstractMaster
      */
     protected function resumeConsuming()
     {
+        if (!$this->consumingStopped) {
+            return;
+        }
+
         foreach ($this->connectionInfo['connections'] as $index => $each) {
             $tags = $this->bindConsumer($each['channel'], $this->queues, [$this, 'onConsume']);
             $this->connectionInfo['connections'][$index]['tags'] = array_keys($tags);
             $this->connectionInfo['tags'] = array_merge($this->connectionInfo['tags'], $tags);
         }
+        $this->consumingStopped = false;
     }
 
     /**
