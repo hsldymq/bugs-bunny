@@ -67,6 +67,8 @@ class WorkerSchedulerTest extends TestCase
 
         // 重复退休没效果
         $scheduler->retire('a');
+        $scheduler->retire('a');
+        $scheduler->retire('a');
         $this->assertCountWorker(1, 1, 0, $scheduler);
         $this->assertHardCountWorker(1, 1, 0, $scheduler);
 
@@ -144,37 +146,71 @@ class WorkerSchedulerTest extends TestCase
         $scheduler->add('a');
         $scheduler->add('b');
         $scheduler->add('c');
+        $scheduler->add('d');
+        $scheduler->add('e');
 
-        $scheduler->allocate();
-        $scheduler->allocate();
-        $scheduler->allocate();
-        $scheduler->allocate();
-        $scheduler->allocate();
-        $scheduler->allocate();
+        $scheduler->allocate();     // e: 1
+        $scheduler->allocate();     // d: 1
+        $scheduler->allocate();     // c: 1
+        $scheduler->allocate();     // b: 1
+        $scheduler->allocate();     // a: 1
 
-        $scheduler->release('c');
-        $this->assertCountWorker(3, 0, 2, $scheduler);
-        $this->assertHardCountWorker(3, 0, 2, $scheduler);
+        $scheduler->allocate();     // a: 0
+        $scheduler->allocate();     // b: 0
+        $scheduler->allocate();     // c: 0
+
+        $scheduler->release('c');       // c: 1
+        $this->assertCountWorker(5, 0, 2, $scheduler);
+        $this->assertHardCountWorker(5, 0, 2, $scheduler);
+
+        $scheduler->release('a');       // a:1
+        $this->assertCountWorker(5, 0, 1, $scheduler);
+        $this->assertHardCountWorker(5, 0, 1, $scheduler);
+
+        $scheduler->retire('a');        // a:0:t
+        $scheduler->retire('d');        // d:0:t
+
+        $scheduler->release('b');       // b:1
+        $this->assertCountWorker(3, 2, 0, $scheduler);
+        $this->assertHardCountWorker(3, 2, 0, $scheduler);
+
+        // a:0:t
+        // b:1
+        // c:1
+        // d:0:t
+        // e:1
 
         $scheduler->release('a');
-        $this->assertCountWorker(3, 0, 1, $scheduler);
-        $this->assertHardCountWorker(3, 0, 1, $scheduler);
+        $scheduler->release('b');
+        $scheduler->release('b');
+        $this->assertCountWorker(3, 2, 0, $scheduler);
+        $this->assertHardCountWorker(3, 2, 0, $scheduler);
+    }
 
-        $scheduler->release('b');
-        $this->assertCountWorker(3, 0, 0, $scheduler);
-        $this->assertHardCountWorker(3, 0, 0, $scheduler);
+    public function testChangeLevelHigher()
+    {
+        $scheduler = new WorkerScheduler(2);
+        $scheduler->add('a');
+        $scheduler->add('b');
+        $scheduler->add('c');
+        $scheduler->add('d');
+        $scheduler->add('e');
 
-        $scheduler->release('a');
-        $scheduler->release('a');
-        $scheduler->release('a');
-        $scheduler->release('b');
-        $scheduler->release('b');
-        $scheduler->release('b');
-        $scheduler->release('c');
-        $scheduler->release('c');
-        $scheduler->release('c');
-        $this->assertCountWorker(3, 0, 0, $scheduler);
-        $this->assertHardCountWorker(3, 0, 0, $scheduler);
+        $scheduler->allocate();
+        $scheduler->allocate();
+        $scheduler->allocate();
+        $scheduler->allocate();
+        $scheduler->allocate();
+
+        $scheduler->retire('d');
+        $scheduler->retire('e');
+
+        // TODO
+    }
+
+    public function testChangeLevelLower()
+    {
+        // TODO
     }
 
     private function assertCountWorker(int $expectWorking, int $expectRetired, int $expectBusy, WorkerScheduler $scheduler)
