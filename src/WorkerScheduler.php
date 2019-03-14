@@ -184,6 +184,10 @@ class WorkerScheduler
         }
 
         $newLevel = min(count($this->scheduleLevels) - 1, $level + 1);
+        if ($level === $newLevel) {
+            return;
+        }
+
         $this->scheduleLevels[$newLevel][$workerID] = true;
         $this->levelMap[$workerID] = $newLevel;
         unset($this->scheduleLevels[$level][$workerID]);
