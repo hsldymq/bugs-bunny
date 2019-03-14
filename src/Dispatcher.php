@@ -152,8 +152,8 @@ class Dispatcher extends AbstractMaster
         $this->connectionOptions = $connectionOptions;
 
         $this->on('workerExit', function (string $workerID) {
-            $this->emit('workerQuit', [$workerID, $this]);
             $pid = $this->getWorkerPID($workerID);
+            $this->emit('workerQuit', [$workerID, $this]);
             $this->clearWorker($workerID, $pid ?? 0);
         });
 
