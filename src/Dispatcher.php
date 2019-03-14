@@ -24,6 +24,12 @@ use Psr\Log\LoggerInterface;
  */
 class Dispatcher extends AbstractMaster
 {
+    use EventEmitterTrait;
+
+    const STATE_RUNNING = 1;
+    const STATE_SHUTTING = 2;
+    const STATE_SHUTDOWN = 3;
+
     /**
      * @var array
      */
@@ -125,9 +131,9 @@ class Dispatcher extends AbstractMaster
     protected $patrolPeriod = 300;
 
     /**
-     * @var string 运行状态 running / shutting / shutdown.
+     * @var string 运行状态 self::STATE_RUNNING / self::STATE_SHUTTING / self::SHUTDOWN
      */
-    protected $state = 'shutdown';
+    protected $state = self::STATE_SHUTDOWN;
 
     /**
      * @param array $connectionOptions amqp server连接配置
@@ -151,44 +157,54 @@ class Dispatcher extends AbstractMaster
         $this->workerFactory = $factory;
         $this->connectionOptions = $connectionOptions;
 
-        $this->on('workerExit', function (string $workerID) {
-            $pid = $this->getWorkerPID($workerID);
-            $this->emit('workerQuit', [$workerID, $this]);
-            $this->clearWorker($workerID, $pid ?? 0);
-        });
-
-        $this->addSignalHandler(SIGCHLD, function () {
-            $this->tryWaitAndClear();
+        $this->on('__workerExit', function (string $workerID, int $pid) {
+            try {
+                $this->emit('workerQuit', [$workerID, $pid]);
+            } finally {
+                $this->clearWorker($workerID, $pid);
+                if ($this->state === self::STATE_SHUTTING && $this->countWorkers() === 0) {
+                    $this->state = self::STATE_SHUTDOWN;
+                    $this->stopProcess();
+                }
+            }
         });
     }
 
     public function run()
     {
-        if ($this->state !== 'shutdown') {
+        if ($this->state !== self::STATE_SHUTDOWN) {
             return;
         }
 
         $this->workersInfo = [];
         $this->idMap = [];
-        $this->state = 'running';
+        $this->state = self::STATE_RUNNING;
 
-        while ($this->state !== 'shutdown') {
+        while ($this->state !== self::STATE_SHUTDOWN) {
             $this->process($this->patrolPeriod);
-
             // 补杀僵尸进程
             for ($i = 0, $len = count($this->idMap); $i < $len; $i++) {
-                if (!$this->tryWaitAndClear()) {
+                $pid = pcntl_wait($status, WNOHANG);
+                if ($pid <= 0) {
                     break;
                 }
+                $this->clearWorker($this->idMap[$pid] ?? '', $pid);
             }
         }
+
+        $this->emit('shutdown');
     }
 
     public function shutdown()
     {
-        $this->state = 'shutting';
         $this->disconnect();
+        if ($this->countWorkers() === 0) {
+            $this->state = self::STATE_SHUTDOWN;
+            $this->stopProcess();
+            return;
+        }
 
+        $this->state = self::STATE_SHUTTING;
         foreach ($this->workersInfo as $workerID => $each) {
             try {
                 $this->sendMessage($workerID, new Message(MessageTypeEnum::LAST_MSG, ''));
@@ -198,7 +214,7 @@ class Dispatcher extends AbstractMaster
                     $msg = "Failed to send message(to {$workerID}). {$e->getMessage()}.";
                     $this->logger->error($msg, ['trace' => $e->getTrace()]);
                 }
-                $this->emit('errorShuttingDown', [$e, $this]);
+                $this->emit('errorShuttingDown', [$e]);
             }
         }
     }
@@ -259,7 +275,7 @@ class Dispatcher extends AbstractMaster
                     }
 
                     $this->workerScheduler->release($workerID);
-                    $this->emit('processed', [$workerID, $this]);
+                    $this->emit('processed', [$workerID]);
                     break;
                 case MessageTypeEnum::STOP_SENDING:
                     $this->workerScheduler->retire($workerID);
@@ -272,18 +288,14 @@ class Dispatcher extends AbstractMaster
                         if ($this->logger) {
                             $this->logger->error($e->getMessage(), ['trace' => $e->getTrace()]);
                         }
-                        $this->emit('errorSendingMessage', [$e, $this]);
+                        $this->emit('errorSendingMessage', [$e]);
                     }
                     break;
                 case MessageTypeEnum::KILL_ME:
                     $this->killWorker($workerID, SIGKILL, true);
-                    if ($this->state === 'shutting' && $this->countWorkers() === 0) {
-                        $this->stopProcess();
-                        $this->state = 'shutdown';
-                    }
                     break;
                 default:
-                    $this->emit('message', [$workerID, $message, $this]);
+                    $this->emit('message', [$workerID, $message]);
             }
         } catch (\Throwable $e) {
             if ($this->logger) {
@@ -291,7 +303,7 @@ class Dispatcher extends AbstractMaster
                     'trace' => $e->getTrace(),
                 ]);
             }
-            $this->emit('errorMessageHandling', [$e, $this]);
+            $this->emit('errorMessageHandling', [$e]);
         }
     }
 
@@ -325,7 +337,7 @@ class Dispatcher extends AbstractMaster
             if ($this->logger) {
                 $this->logger->error($e->getMessage(), ['trace' => $e->getTrace()]);
             }
-            $this->emit('errorDispatchingMessage', [$e, $this]);
+            $this->emit('errorDispatchingMessage', [$e]);
         }
 
         if (!($errorOccurred ?? false)) {
@@ -337,7 +349,7 @@ class Dispatcher extends AbstractMaster
                 $this->stopConsuming();
                 // 边沿触发
                 if (!$reachedBefore) {
-                    $this->emit('limitReached', [$this->countWorkers(), $this]);
+                    $this->emit('limitReached');
                 }
             }
         }
@@ -385,6 +397,7 @@ class Dispatcher extends AbstractMaster
     {
         if ($n > 0) {
             $this->workerCapacity = $n;
+            $this->workerScheduler->changeLevels($n);
         }
 
         return $this;
@@ -429,14 +442,6 @@ class Dispatcher extends AbstractMaster
     }
 
     /**
-     * @return string
-     */
-    protected function getState(): string
-    {
-        return $this->state;
-    }
-
-    /**
      * 是否已到达派发消息上限.
      *
      * 上限是指创建的worker数量已达上限,并且已没有空闲worker可以调度
@@ -451,21 +456,6 @@ class Dispatcher extends AbstractMaster
 
         return $this->countWorkers() >= $this->maxWorkers
             && $this->workerScheduler->countSchedulable() === 0;
-    }
-
-    /**
-     * @return bool
-     */
-    protected function tryWaitAndClear(): bool
-    {
-        $pid = pcntl_wait($status, WNOHANG);
-        if ($pid > 0) {
-            $this->clearWorker($this->idMap[$pid] ?? '', $pid);
-
-            return true;
-        }
-
-        return false;
     }
 
     /**
@@ -501,7 +491,7 @@ class Dispatcher extends AbstractMaster
                 if ($this->logger) {
                     $this->logger->error($e->getMessage(), ['trace' => $e->getTrace()]);
                 }
-                $this->emit('errorCreateWorker', [$e, $this]);
+                $this->emit('errorCreateWorker', [$e]);
                 throw $e;
             }
             $this->stat['peakWorkerNum'] = max($this->countWorkers(), $this->stat['peakWorkerNum'] + 1);
