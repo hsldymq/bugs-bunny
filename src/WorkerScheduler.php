@@ -255,6 +255,16 @@ class WorkerScheduler
     }
 
     /**
+     * 返回剩余可调度的worker.
+     *
+     * @return int
+     */
+    public function countSchedulable(): int
+    {
+        return $this->countWorking() - $this->countBusy();
+    }
+
+    /**
      * @return int 返回未退休的worker数量(包含忙碌中的worker).
      */
     public function countWorking(): int
