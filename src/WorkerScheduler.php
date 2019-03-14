@@ -69,17 +69,25 @@ class WorkerScheduler
      * 将一个worker加入到调度器中.
      *
      * @param string $workerID
+     * @param bool $allocated
      */
-    public function add(string $workerID)
+    public function add(string $workerID, bool $allocated = false)
     {
         if (isset($this->levelMap[$workerID])) {
             return;
         }
 
-        $level = count($this->scheduleLevels) - 1;
+        if ($allocated) {
+            $level = count($this->scheduleLevels) - 2;
+        } else {
+            $level = count($this->scheduleLevels) - 1;
+        }
         $this->scheduleLevels[$level][$workerID] = self::WORKING;
         $this->levelMap[$workerID] = $level;
         $this->increase('working');
+        if ($level === 0) {
+            $this->increase('busy');
+        }
     }
 
     /**

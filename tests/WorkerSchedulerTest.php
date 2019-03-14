@@ -7,20 +7,29 @@ class WorkerSchedulerTest extends TestCase
 {
     public function testAddWorker()
     {
-        $scheduler = new WorkerScheduler(1);
+        $scheduler1 = new WorkerScheduler(1);
 
-        $scheduler->add('a');
-        $this->assertCountWorker(1, 0, 0, $scheduler);
-        $this->assertHardCountWorker(1, 0, 0, $scheduler);
+        $scheduler1->add('a');
+        $this->assertCountWorker(1, 0, 0, $scheduler1);
+        $this->assertHardCountWorker(1, 0, 0, $scheduler1);
 
-        $scheduler->add('b');
-        $this->assertCountWorker(2, 0, 0, $scheduler);
-        $this->assertHardCountWorker(2, 0, 0, $scheduler);
+        $scheduler1->add('b');
+        $this->assertCountWorker(2, 0, 0, $scheduler1);
+        $this->assertHardCountWorker(2, 0, 0, $scheduler1);
 
         // 重复增加没效果
-        $scheduler->add('a');
-        $this->assertCountWorker(2, 0, 0, $scheduler);
-        $this->assertHardCountWorker(2, 0, 0, $scheduler);
+        $scheduler1->add('a');
+        $this->assertCountWorker(2, 0, 0, $scheduler1);
+        $this->assertHardCountWorker(2, 0, 0, $scheduler1);
+
+        $scheduler1->add('d', true);
+        $this->assertCountWorker(3, 0, 1, $scheduler1);
+        $this->assertHardCountWorker(3, 0, 1, $scheduler1);
+
+        $scheduler2 = new WorkerScheduler(2);
+        $scheduler2->add('e', true);
+        $this->assertCountWorker(1, 0, 0, $scheduler2);
+        $this->assertHardCountWorker(1, 0, 0, $scheduler2);
     }
 
     /**
