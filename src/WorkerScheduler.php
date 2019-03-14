@@ -18,6 +18,11 @@ class WorkerScheduler
 
     /**
      * @var array
+     * Dispatcher允许一个worker有一个队列同时发送多个消息给它,为了实现按照闲置情况来调度worker
+     * 这里的数组结构包含worker队列上限+1个元素,每一个数组元素代表一个闲置等级.
+     * 最高下标中代表最空闲,没有被调度的worker
+     * 次高代表被调度出一次,一次类推
+     * 下标0中为忙碌中或者已退休的worker.
      * [
      *      [
      *          $workerID => (integer),     // self::WORKING 允许调度, self::RETIRED 退休,停止调度
