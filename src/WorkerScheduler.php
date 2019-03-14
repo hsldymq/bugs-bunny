@@ -101,6 +101,33 @@ class WorkerScheduler
     }
 
     /**
+     * 将一个worker置为退休,该worker不再参与调度.
+     *
+     * @param string $workerID
+     */
+    public function retire(string $workerID)
+    {
+        $level = $this->levelMap[$workerID] ?? null;
+        if ($level === null) {
+            return;
+        }
+
+        $state = $this->scheduleLevels[$level][$workerID];
+        if ($state !== self::RETIRED) {
+            $this->levelMap[$workerID] = 0;
+            $this->scheduleLevels[0][$workerID] = self::RETIRED;
+
+            $this->increase('retired');
+            $this->decrease('working');
+            if ($level === 0) {
+                $this->decrease('busy');
+            }
+
+            unset($this->scheduleLevels[$level][$workerID]);
+        }
+    }
+
+    /**
      * 分配一个可以用的worker.
      *
      * 分配后,该worker的调度等级减1.
@@ -162,57 +189,6 @@ class WorkerScheduler
     }
 
     /**
-     * 将一个worker置为退休,该worker不再参与调度.
-     *
-     * @param string $workerID
-     */
-    public function retire(string $workerID)
-    {
-        $level = $this->levelMap[$workerID] ?? null;
-        if ($level === null) {
-            return;
-        }
-
-        $state = $this->scheduleLevels[$level][$workerID];
-        if ($state !== self::RETIRED) {
-            $this->levelMap[$workerID] = 0;
-            $this->scheduleLevels[0][$workerID] = self::RETIRED;
-
-            $this->increase('retired');
-            $this->decrease('working');
-            if ($level === 0) {
-                $this->decrease('busy');
-            }
-
-            unset($this->scheduleLevels[$level][$workerID]);
-        }
-    }
-
-    /**
-     * @return int 返回未退休的worker数量(包含忙碌中的worker).
-     */
-    public function countWorking(): int
-    {
-        return $this->workingNum;
-    }
-
-    /**
-     * @return int 返回忙碌中的worker数量, 忙碌中的worker是不参与调度的.
-     */
-    public function countBusy(): int
-    {
-        return $this->busyNum;
-    }
-
-    /**
-     * @return int 返回已退休的worker数量.
-     */
-    public function countRetired(): int
-    {
-        return $this->retiredNum;
-    }
-
-    /**
      * 变更调度等级数.
      *
      * 调整后的等级数大于或小于原等级数,那么存在两种情况
@@ -221,7 +197,7 @@ class WorkerScheduler
      *
      * @param int $newLevelNum
      */
-    private function changeLevels(int $newLevelNum)
+    public function changeLevels(int $newLevelNum)
     {
         $oldLevelNum = count($this->scheduleLevels);
         if ($oldLevelNum === $newLevelNum || $newLevelNum <= 0) {
@@ -253,6 +229,30 @@ class WorkerScheduler
         }
 
         $this->scheduleLevels = $newScheduleLevels;
+    }
+
+    /**
+     * @return int 返回未退休的worker数量(包含忙碌中的worker).
+     */
+    public function countWorking(): int
+    {
+        return $this->workingNum;
+    }
+
+    /**
+     * @return int 返回忙碌中的worker数量, 忙碌中的worker是不参与调度的.
+     */
+    public function countBusy(): int
+    {
+        return $this->busyNum;
+    }
+
+    /**
+     * @return int 返回已退休的worker数量.
+     */
+    public function countRetired(): int
+    {
+        return $this->retiredNum;
     }
 
     private function increase(string $which)
