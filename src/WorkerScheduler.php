@@ -232,8 +232,8 @@ class WorkerScheduler
                         // $diff < 0
                         $newLevel = max(0, $level + $diff);
                     }
-                    $newScheduleLevels[$newLevelNum][$workerID] = $state;
-                    $this->levelMap[$workerID] = $newLevelNum;
+                    $newScheduleLevels[$newLevel][$workerID] = $state;
+                    $this->levelMap[$workerID] = $newLevel;
 
                     if ($level > 0 && $newLevel === 0) {
                         $this->increase('busy');
