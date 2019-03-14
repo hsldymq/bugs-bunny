@@ -20,6 +20,7 @@ use Psr\Log\LoggerInterface;
  * @event errorSendingMessage
  * @event errorMessageHandling
  * @event errorDispatchingMessage
+ * @event errorCreateWorker
  */
 class Dispatcher extends AbstractMaster
 {
@@ -57,9 +58,8 @@ class Dispatcher extends AbstractMaster
      * @var array
      * [
      *      $workerID => [
-     *          'retired' => (bool),        // 是否停止向该worker投放队列消息
-     *          'sentMessages' => (int),    // 已向该worker投放的消息数量
-     *          'level' => (int),           // worker的处理消息优先级别(与$sendingPriority配合使用,用作该变量的key用于O(1)复杂度的查找)
+     *          'sent' => (int),        // 已向该worker投放的消息数量
+     *          'processed' => (int),   // 已处理的消息数量
      *      ],
      *      ...
      * ]
@@ -70,6 +70,11 @@ class Dispatcher extends AbstractMaster
      * @var WorkerFactoryInterface
      */
     protected $workerFactory;
+
+    /**
+     * @var WorkerScheduler
+     */
+    protected $workerScheduler;
 
     /**
      * @var int $maxWorkers 子进程数量上限. -1为不限制
@@ -94,34 +99,19 @@ class Dispatcher extends AbstractMaster
     protected $idMap = [];
 
     /**
-     * @var array 主要用于快速调度查询一个空闲worker派发消息.
-     * [
-     *      $level => [
-     *          $workerID => true,
-     *      ],
-     *      ...
-     * ]
-     *
-     * 实现算法:
-     * 用$workerCapacity将指定该索引数组的大小
-     * 每一个元素都是一个关联数组,保存这个级别的worker
-     * 每一个key既用来作为$workersInfo中的level快速定位worker, 也代表了当前这个级别中的worker的消息队列容量,数字越高代表其中的worker越空闲
-     * 在派发消息的时候,逆序的遍历这个数组,取当前最空闲的worker派发消息, 如果没有空闲worker就fork一个,并将信息存放进来.
-     */
-    protected $sendingPriority = [];
-
-    /**
      * @var array 统计信息.
      * [
-     *      'consumed' => (int),        // 消费了的消息总数
-     *      'processed' => (int),       // 消费了的消息总数
-     *      'memoryUsage' => (int),     // 当前内存量,不含未使用的页(字节)
-     *      'peakMemoryUsage' => (int)  // 内存使用峰值,不含未使用的页(字节)
+     *      'consumed' => (int),            // 消费了的消息总数
+     *      'processed' => (int),           // 处理了的消息总数
+     *      'peakWorkerNum' => (int),       // worker数量峰值
+     *      'memoryUsage' => (int),         // 当前内存量,不含未使用的页(字节)
+     *      'peakMemoryUsage' => (int)      // 内存使用峰值,不含未使用的页(字节)
      * ]
      */
     protected $stat = [
         'consumed' => 0,
         'processed' => 0,
+        'peakWorkerNum' => 0,
     ];
 
     /**
@@ -157,6 +147,7 @@ class Dispatcher extends AbstractMaster
     {
         parent::__construct();
 
+        $this->workerScheduler = new WorkerScheduler($this->workerCapacity);
         $this->workerFactory = $factory;
         $this->connectionOptions = $connectionOptions;
 
@@ -263,11 +254,15 @@ class Dispatcher extends AbstractMaster
             switch ($type) {
                 case MessageTypeEnum::PROCESSED:
                     $this->stat['processed']++;
-                    $this->stepSendingPriority($workerID, true);
+                    if (isset($this->workersInfo[$workerID])) {
+                        $this->workersInfo[$workerID]['processed']++;
+                    }
+
+                    $this->workerScheduler->release($workerID);
                     $this->emit('processed', [$workerID, $this]);
                     break;
                 case MessageTypeEnum::STOP_SENDING:
-                    $this->retireWorker($workerID);
+                    $this->workerScheduler->retire($workerID);
                     try {
                         $this->sendMessage($workerID, new Message(MessageTypeEnum::LAST_MSG, json_encode([
                             'messageID' => Helper::uuid(),
@@ -302,9 +297,13 @@ class Dispatcher extends AbstractMaster
 
     public function onConsume(AMQPMessage $message, Channel $channel, Client $client)
     {
-        $this->stat['consumed']++;
+        $reachedBefore = $this->limitReached();
+        try {
+            $workerID = $this->scheduleWorker();
+        } catch (\Throwable $e) {
+            return;
+        }
 
-        $workerID = $this->scheduleWorker();
         $messageContent = json_encode([
             'messageID' => Helper::uuid(),
             'meta' => [
@@ -322,6 +321,7 @@ class Dispatcher extends AbstractMaster
             $this->sendMessage($workerID, new Message(MessageTypeEnum::QUEUE, $messageContent));
         } catch (\Throwable $e) {
             $errorOccurred = true;
+            $this->workerScheduler->release($workerID);
             if ($this->logger) {
                 $this->logger->error($e->getMessage(), ['trace' => $e->getTrace()]);
             }
@@ -329,19 +329,17 @@ class Dispatcher extends AbstractMaster
         }
 
         if (!($errorOccurred ?? false)) {
+            $this->stat['consumed']++;
             $this->workersInfo[$workerID]['sent']++;
+            $channel->ack($message)->done();
 
-            $before = $this->limitReached();
-            $this->stepSendingPriority($workerID, false);
             if ($this->limitReached()) {
                 $this->stopConsuming();
                 // 边沿触发
-                if (!$before) {
+                if (!$reachedBefore) {
                     $this->emit('limitReached', [$this->countWorkers(), $this]);
                 }
             }
-
-            $channel->ack($message)->done();
         }
     }
 
@@ -439,26 +437,6 @@ class Dispatcher extends AbstractMaster
     }
 
     /**
-     * @return bool
-     */
-    protected function workerLimitReached(): bool
-    {
-        if ($this->maxWorkers === -1) {
-            return false;
-        }
-
-        return $this->countWorkers() >= $this->maxWorkers;
-    }
-
-    /**
-     * @return bool
-     */
-    protected function isWorkerQueueFull(): bool
-    {
-        return $this->countWorkers() <= count($this->sendingPriority[0]);
-    }
-
-    /**
      * 是否已到达派发消息上限.
      *
      * 上限是指创建的worker数量已达上限,并且已没有空闲worker可以调度
@@ -467,7 +445,12 @@ class Dispatcher extends AbstractMaster
      */
     protected function limitReached(): bool
     {
-        return $this->workerLimitReached() && $this->isWorkerQueueFull();
+        if ($this->maxWorkers === -1) {
+            return false;
+        }
+
+        return $this->countWorkers() >= $this->maxWorkers
+            && $this->workerScheduler->countSchedulable() === 0;
     }
 
     /**
@@ -486,99 +469,49 @@ class Dispatcher extends AbstractMaster
     }
 
     /**
-     * 增加/减少worker处理消息的优先级.
-     *
-     * @param string $workerID
-     * @param bool $increase true:加1, false:减1
-     */
-    protected function stepSendingPriority(string $workerID, bool $increase)
-    {
-        if (!isset($this->workersInfo[$workerID])) {
-            return;
-        }
-
-        $oldLevel = $this->workersInfo[$workerID]['level'];
-        if ($increase) {
-            $newLevel = min($this->workerCapacity, $oldLevel + 1);
-        } else {
-            $newLevel = max(0, $oldLevel - 1);
-        }
-        $this->sendingPriority[$newLevel][$workerID] = true;
-        unset($this->sendingPriority[$oldLevel][$workerID]);
-        $this->workersInfo[$workerID]['level'] = $newLevel;
-    }
-
-    /**
      * @param string $workerID
      * @param int $pid
      */
     protected function clearWorker(string $workerID, int $pid)
     {
-        if (isset($this->workersInfo[$workerID])) {
-            $level = $this->workersInfo[$workerID]['level'];
-            unset($this->workersInfo[$workerID]);
-            unset($this->sendingPriority[$level][$workerID]);
-        }
-
+        $this->workerScheduler->remove($workerID);
+        unset($this->workersInfo[$workerID]);
         unset($this->idMap[$pid]);
-    }
-
-    /**
-     * 指定worker退休,即不再向派发消息.
-     *
-     * @param string $workerID
-     */
-    protected function retireWorker(string $workerID)
-    {
-        if (isset($this->workersInfo[$workerID])) {
-            $this->workersInfo[$workerID]['retired'] = true;
-        }
-    }
-
-    /**
-     * 指定worker是否退休.
-     *
-     * @param string $workerID
-     *
-     * @return bool
-     */
-    protected function isWorkerRetired(string $workerID): bool
-    {
-        return $this->workersInfo[$workerID]['retired'] ?? true;
     }
 
     /**
      * 安排一个worker,如果没有空闲worker,创建一个.
      *
      * @return string worker id
+     * @throws
      */
     protected function scheduleWorker(): string
     {
-        $workerID = null;
-        for ($i = count($this->sendingPriority) - 1; $i > 0; $i--) {
-            if (!end($this->sendingPriority[$i])) {
-                continue;
+        while (($workerID = $this->workerScheduler->allocate()) !== null) {
+            $c = $this->getCommunicator($workerID);
+            if ($c && $c->isWritable()) {
+                break;
             }
-            do {
-                $wid = key($this->sendingPriority[$i]);
-                $c = $this->getCommunicator($wid);
-                if ($c && $c->isWritable() && !$this->isWorkerRetired($wid)) {
-                    $workerID = $wid;
-                    break 2;
-                }
-            } while (prev($this->sendingPriority[$i]));
         }
 
         if (!$workerID) {
-            $workerID = $this->createWorker($this->workerFactory);
+            try {
+                $workerID = $this->createWorker($this->workerFactory);
+            } catch (\Throwable $e) {
+                if ($this->logger) {
+                    $this->logger->error($e->getMessage(), ['trace' => $e->getTrace()]);
+                }
+                $this->emit('errorCreateWorker', [$e, $this]);
+                throw $e;
+            }
+            $this->stat['peakWorkerNum'] = max($this->countWorkers(), $this->stat['peakWorkerNum'] + 1);
+
             $pid = $this->getWorkerPID($workerID);
-            $level = $this->workerCapacity;
-            $this->sendingPriority[$level][$workerID] = true;
+            $this->workerScheduler->add($workerID, true);
             $this->idMap[$pid] = $workerID;
             $this->workersInfo[$workerID] = [
-                'level' => $level,      // 发送优先级
-                'sent' => 0,            // 已经向他发送的消息数量
-                'retired' => false,     // 是否停止向这个worker发送正常的consume消息
+                'sent' => 0,
+                'processed' => 0,
             ];
         }
 
