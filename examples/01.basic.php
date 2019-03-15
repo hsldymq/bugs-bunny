@@ -6,6 +6,7 @@ use Archman\BugsBunny\QueueMessage;
 use Archman\BugsBunny\WorkerFactory;
 use Archman\BugsBunny\Dispatcher;
 use Archman\BugsBunny\Worker;
+use Archman\BugsBunny\Connection;
 
 $factory = new WorkerFactory();
 $factory->setMessageHandler(function (QueueMessage $message, Worker $worker) {
@@ -14,14 +15,14 @@ $factory->setMessageHandler(function (QueueMessage $message, Worker $worker) {
     usleep(mt_rand(10, 100));
 });
 
-$dispatcher = new Dispatcher([
-    'host' => '127.0.0.1',
+$conn = new Connection(['host' => '127.0.0.1',
     'port' => 5672,
     'vhost' => '/',
     'user' => 'guest',
     'password' => 'guest',
-], $factory);
-$dispatcher->connect(['queue1', 'queue2', 'queue3']);
+], ['queue1', 'queue2', 'queue3']);
+
+$dispatcher = new Dispatcher($conn, $factory);
 
 $dispatcher->on('processed', function (string $workerID, Dispatcher $master) {
     $stat = $master->getStat();
