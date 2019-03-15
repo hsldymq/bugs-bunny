@@ -85,8 +85,6 @@ class Dispatcher extends AbstractMaster
      *      'consumed' => (int),            // 消费了的消息总数
      *      'processed' => (int),           // 处理了的消息总数
      *      'peakWorkerNum' => (int),       // worker数量峰值
-     *      'memoryUsage' => (int),         // 当前内存量,不含未使用的页(字节)
-     *      'peakMemoryUsage' => (int)      // 内存使用峰值,不含未使用的页(字节)
      * ]
      */
     protected $stat = [
@@ -357,11 +355,7 @@ class Dispatcher extends AbstractMaster
      */
     public function getStat(): array
     {
-        $stat = $this->stat;
-        $stat['memoryUsage'] = memory_get_usage();
-        $stat['peakMemoryUsage'] = memory_get_peak_usage();
-
-        return $stat;
+        return $this->stat;
     }
 
     public function clearStat()
