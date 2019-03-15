@@ -31,39 +31,9 @@ class Dispatcher extends AbstractMaster
     const STATE_SHUTDOWN = 3;
 
     /**
-     * @var array
+     * @var Connection
      */
-    protected $connectionOptions;
-
-    /**
-     * @var array
-     * [
-     *      'connections' => [
-     *          [
-     *              'client' => $client,
-     *              'channel' => $channel,
-     *              'tags' => [$tag1, $tag2, ...],
-     *          ],
-     *          ...
-     *      ],
-     *      'tags' => [
-     *          $tag => $queueName,
-     *          ...
-     *      ]
-     * ]
-     */
-    protected $connectionInfo = [
-        'connections' => [],
-        'tags' => [],
-    ];
-
-    /**
-     * @var bool 是否已停止消费
-     */
-    private $consumingStopped = false;
-
-    /** @var array 要消费的队列 */
-    protected $queues = [];
+    private $connection;
 
     /**
      * @var array
@@ -141,26 +111,17 @@ class Dispatcher extends AbstractMaster
     protected $state = self::STATE_SHUTDOWN;
 
     /**
-     * @param array $connectionOptions amqp server连接配置
-     * [
-     *      'host' => 'xxx',
-     *      'port' => 123,
-     *      'vhost' => 'yyy',
-     *      'user' => 'zzz',
-     *      'password' => 'uuu',
-     *      'connections' => 1,                 // =1, 同时创建多少个连接. [可选]默认为1
-     *      // 'reconnectOnError' => false / true, // [可选]默认为true
-     *      // 'maxReconnectRetries => 1,          // >=1, 重连尝试次数,超过将抛出异常. [可选] 默认为3
-     * ]
+     * @param Connection $connection
      * @param WorkerFactoryInterface $factory
      */
-    public function __construct(array $connectionOptions, WorkerFactoryInterface $factory)
+    public function __construct(Connection $connection, WorkerFactoryInterface $factory)
     {
         parent::__construct();
 
         $this->workerScheduler = new WorkerScheduler($this->workerCapacity);
         $this->workerFactory = $factory;
-        $this->connectionOptions = $connectionOptions;
+        $this->connection = $connection;
+        $this->connection->connect($this->getEventLoop(), [$this, 'onConsume']);
 
         $this->on('__workerExit', function (string $workerID, int $pid) {
             try {
@@ -173,6 +134,11 @@ class Dispatcher extends AbstractMaster
                 }
             }
         });
+    }
+
+    public function __destruct()
+    {
+        $this->connection->disconnect();
     }
 
     public function run()
@@ -202,7 +168,7 @@ class Dispatcher extends AbstractMaster
 
     public function shutdown()
     {
-        $this->disconnect();
+        $this->connection->disconnect();
         if ($this->countWorkers() === 0) {
             $this->state = self::STATE_SHUTDOWN;
             $this->stopProcess();
@@ -224,49 +190,6 @@ class Dispatcher extends AbstractMaster
         }
     }
 
-    /**
-     * @param array $queues 要拉取消息的队列名称列表
-     */
-    public function connect(array $queues)
-    {
-        $this->queues = $queues;
-        $connections = $this->connectionOptions['connections'] ?? 1;
-        $options = array_intersect_key($this->connectionOptions, [
-            'host' => true,
-            'port' => true,
-            'vhost' => true,
-            'user' => true,
-            'password' => true,
-        ]);
-
-        for ($i = 0; $i < $connections; $i++) {
-            $this->makeConnection($options, $queues);
-        }
-    }
-
-    public function disconnect()
-    {
-        foreach ($this->connectionInfo['connections'] as $index => $each) {
-            /** @var Client $client */
-            $client = $each['client'];
-            $tags = $each['tags'];
-            $client->disconnect()->done();
-            unset($this->connectionInfo['connections'][$index]);
-            foreach ($tags as $t) {
-                unset($this->connectionInfo['tags'][$t]);
-            }
-        }
-    }
-
-    /**
-     * @param array $queues
-     */
-    public function reconnect(array $queues)
-    {
-        $this->disconnect();
-        $this->connect($queues);
-    }
-
     public function onMessage(string $workerID, Message $message)
     {
         $type = $message->getType();
@@ -281,7 +204,7 @@ class Dispatcher extends AbstractMaster
 
                     $this->workerScheduler->release($workerID);
                     if (!$this->limitReached()) {
-                        $this->resumeConsuming();
+                        $this->connection->resume();
                     }
                     $this->emit('processed', [$workerID]);
                     break;
@@ -329,7 +252,7 @@ class Dispatcher extends AbstractMaster
             'meta' => [
                 'amqp' => [
                     'exchange' => $message->exchange,
-                    'queue' => $this->connectionInfo['tags'][$message->consumerTag],
+                    'queue' => $this->connection->getQueue($message->consumerTag),
                     'routingKey' => $message->routingKey,
                 ],
                 'sent' => $this->workersInfo[$workerID]['sent'] + 1,
@@ -354,7 +277,7 @@ class Dispatcher extends AbstractMaster
             $channel->ack($message)->done();
 
             if ($this->limitReached()) {
-                $this->stopConsuming();
+                $this->connection->pause();
                 // 边沿触发
                 if (!$reachedBefore) {
                     $this->emit('limitReached');
@@ -514,117 +437,5 @@ class Dispatcher extends AbstractMaster
         }
 
         return $workerID;
-    }
-
-    /**
-     * @param array $options
-     * @param array $queues
-     */
-    protected function makeConnection(array $options, array $queues)
-    {
-        $onReject = function ($reason) {
-            $msg = "Failed to connect AMQP server.";
-
-            if (is_string($reason)) {
-                $msg .= $reason;
-            } else if ($reason instanceof \Throwable) {
-                $prev = $reason;
-                $context = ['trace' => $prev->getTrace()];
-                $msg .= $reason->getMessage();
-            }
-
-            if ($this->logger) {
-                $this->logger->error($msg, $context ?? null);
-            }
-
-            throw new \Exception($msg, 0, $prev ?? null);
-        };
-
-        $client = new Client($this->getEventLoop(), $options);
-        $client->connect()
-            ->then(function (Client $client) {
-                return $client->channel();
-            }, $onReject)
-            ->then(function (Channel $channel) use ($onReject) {
-                return $channel->qos(0, 1)->then(function () use ($channel) {
-                    return $channel;
-                }, $onReject);
-            }, $onReject)
-            ->then(function (Channel $channel) use ($client, $queues) {
-                $tags = $this->bindConsumer($channel, $queues, [$this, 'onConsume']);
-                $this->connectionInfo['connections'][] = [
-                    'client' => $client,
-                    'channel' => $channel,
-                    'tags' => array_keys($tags),
-                ];
-                $this->connectionInfo['tags'] = array_merge($this->connectionInfo['tags'], $tags);
-            }, $onReject)
-            ->done(function () {}, $onReject);
-    }
-
-    /**
-     * 停止消费队列消息.
-     */
-    protected function stopConsuming()
-    {
-        if ($this->consumingStopped) {
-            return;
-        }
-
-        foreach ($this->connectionInfo['connections'] as $each) {
-            $tags = $each['tags'];
-            $this->unbindConsumer($each['channel'], $tags);
-            foreach ($tags as $t) {
-                unset($this->connectionInfo['tags'][$t]);
-            }
-        }
-        $this->consumingStopped = true;
-    }
-
-    /**
-     * 恢复消费队列消息
-     */
-    protected function resumeConsuming()
-    {
-        if (!$this->consumingStopped) {
-            return;
-        }
-
-        foreach ($this->connectionInfo['connections'] as $index => $each) {
-            $tags = $this->bindConsumer($each['channel'], $this->queues, [$this, 'onConsume']);
-            $this->connectionInfo['connections'][$index]['tags'] = array_keys($tags);
-            $this->connectionInfo['tags'] = array_merge($this->connectionInfo['tags'], $tags);
-        }
-        $this->consumingStopped = false;
-    }
-
-    /**
-     * @param Channel $channel
-     * @param array $queues
-     * @param callable $handler
-     *
-     * @return array
-     */
-    protected function bindConsumer(Channel $channel, array $queues, callable $handler): array
-    {
-        $tags = [];
-        foreach ($queues as $queueName) {
-            $tag = Helper::uuid();
-            $channel->consume($handler, $queueName, $tag)->done();
-            $tags[$tag] = $queueName;
-        }
-
-        return $tags;
-    }
-
-    /**
-     * @param Channel $channel
-     * @param array $tags
-     */
-    protected function unbindConsumer(Channel $channel, array $tags)
-    {
-        foreach ($tags as $tag) {
-            $channel->cancel($tag)->done();
-        }
     }
 }
