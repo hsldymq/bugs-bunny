@@ -224,7 +224,7 @@ class Dispatcher extends AbstractMaster
                     }
                     break;
                 case MessageTypeEnum::KILL_ME:
-                    $this->killWorker($workerID, SIGKILL, true);
+                    $this->killWorker($workerID, SIGKILL);
                     break;
                 default:
                     $this->emit('message', [$workerID, $message]);
