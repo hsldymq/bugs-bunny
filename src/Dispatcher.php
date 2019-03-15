@@ -94,9 +94,9 @@ class Dispatcher extends AbstractMaster
     ];
 
     /**
-     * @var LoggerInterface|null
+     * @var array 当限制了worker数量并且worker跑满,进来的消息缓存起来,待有空闲的时候再派发
      */
-    protected $logger = null;
+    private $cachedMessages = [];
 
     /**
      * @var int 僵尸进程检查周期(秒)
@@ -179,10 +179,6 @@ class Dispatcher extends AbstractMaster
                 $this->sendMessage($workerID, new Message(MessageTypeEnum::LAST_MSG, ''));
             } catch (\Throwable $e) {
                 // TODO 如果没有成功向所有进程发送关闭,考虑在其他地方需要做重试机制
-                if ($this->logger) {
-                    $msg = "Failed to send message(to {$workerID}). {$e->getMessage()}.";
-                    $this->logger->error($msg, ['trace' => $e->getTrace()]);
-                }
                 $this->emit('errorShuttingDown', [$e]);
             }
         }
@@ -202,7 +198,17 @@ class Dispatcher extends AbstractMaster
 
                     $this->workerScheduler->release($workerID);
                     if (!$this->limitReached()) {
-                        $this->connection->resume();
+                        // 优先派发缓存的消息
+                        if (count($this->cachedMessages) > 0) {
+                            $msg = array_shift($this->cachedMessages);
+                            try {
+                                $this->dispatch($msg);
+                            } catch (\Throwable $e) {
+                                array_unshift($this->cachedMessages, $msg);
+                            }
+                        } else {
+                            $this->connection->resume();
+                        }
                     }
                     $this->emit('processed', [$workerID]);
                     break;
@@ -214,9 +220,6 @@ class Dispatcher extends AbstractMaster
                             'meta' => ['sent' => $this->workersInfo[$workerID]['sent']],
                         ])));
                     } catch (\Throwable $e) {
-                        if ($this->logger) {
-                            $this->logger->error($e->getMessage(), ['trace' => $e->getTrace()]);
-                        }
                         $this->emit('errorSendingMessage', [$e]);
                     }
                     break;
@@ -227,73 +230,46 @@ class Dispatcher extends AbstractMaster
                     $this->emit('message', [$workerID, $message]);
             }
         } catch (\Throwable $e) {
-            if ($this->logger) {
-                $this->logger->error($e->getMessage(), [
-                    'trace' => $e->getTrace(),
-                ]);
-            }
             $this->emit('errorMessageHandling', [$e]);
         }
     }
 
-    public function onConsume(AMQPMessage $message, Channel $channel, Client $client)
+    public function onConsume(AMQPMessage $AMQPMessage, Channel $channel, Client $client)
     {
         $reachedBefore = $this->limitReached();
+        $message = [
+            'messageID' => Helper::uuid(),
+            'meta' => [
+                'amqp' => [
+                    'exchange' => $AMQPMessage->exchange,
+                    'queue' => $this->connection->getQueue($AMQPMessage->consumerTag),
+                    'routingKey' => $AMQPMessage->routingKey,
+                ],
+                'sent' => -1,
+            ],
+            'content' => $AMQPMessage->content,
+        ];
+
+        if ($reachedBefore) {
+            $this->cachedMessages[] = $message;
+            $channel->ack($AMQPMessage)->done();
+            return;
+        }
+
         try {
-            $workerID = $this->scheduleWorker();
+            $this->dispatch($message);
         } catch (\Throwable $e) {
             return;
         }
 
-        $messageContent = json_encode([
-            'messageID' => Helper::uuid(),
-            'meta' => [
-                'amqp' => [
-                    'exchange' => $message->exchange,
-                    'queue' => $this->connection->getQueue($message->consumerTag),
-                    'routingKey' => $message->routingKey,
-                ],
-                'sent' => $this->workersInfo[$workerID]['sent'] + 1,
-            ],
-            'content' => $message->content,
-        ]);
-
-        try {
-            $this->sendMessage($workerID, new Message(MessageTypeEnum::QUEUE, $messageContent));
-        } catch (\Throwable $e) {
-            $errorOccurred = true;
-            $this->workerScheduler->release($workerID);
-            if ($this->logger) {
-                $this->logger->error($e->getMessage(), ['trace' => $e->getTrace()]);
-            }
-            $this->emit('errorDispatchingMessage', [$e]);
-        }
-
-        if (!($errorOccurred ?? false)) {
-            $this->stat['consumed']++;
-            $this->workersInfo[$workerID]['sent']++;
-            $channel->ack($message)->done();
-
-            if ($this->limitReached()) {
-                $this->connection->pause();
-                // 边沿触发
-                if (!$reachedBefore) {
-                    $this->emit('limitReached');
-                }
+        $channel->ack($AMQPMessage)->done();
+        if ($this->limitReached()) {
+            $this->connection->pause();
+            // 边沿触发
+            if (!$reachedBefore) {
+                $this->emit('limitReached');
             }
         }
-    }
-
-    /**
-     * @param LoggerInterface $logger
-     *
-     * @return self
-     */
-    public function setLogger(LoggerInterface $logger): self
-    {
-        $this->logger = $logger;
-
-        return $this;
     }
 
     /**
@@ -367,6 +343,32 @@ class Dispatcher extends AbstractMaster
     }
 
     /**
+     * 派发消息.
+     *
+     * @param array $message
+     *
+     * @return string 派发给的worker id
+     * @throws
+     */
+    private function dispatch(array $message): string
+    {
+        $workerID = $this->scheduleWorker();
+
+        $message['meta']['sent'] = $this->workersInfo[$workerID]['sent'] + 1;
+        try {
+            $this->sendMessage($workerID, new Message(MessageTypeEnum::QUEUE, json_encode($message)));
+        } catch (\Throwable $e) {
+            $this->workerScheduler->release($workerID);
+            $this->emit('errorDispatchingMessage', [$e]);
+            throw $e;
+        }
+        $this->stat['consumed']++;
+        $this->workersInfo[$workerID]['sent']++;
+
+        return $workerID;
+    }
+
+    /**
      * 是否已到达派发消息上限.
      *
      * 上限是指创建的worker数量已达上限,并且已没有空闲worker可以调度
@@ -413,9 +415,6 @@ class Dispatcher extends AbstractMaster
             try {
                 $workerID = $this->createWorker($this->workerFactory);
             } catch (\Throwable $e) {
-                if ($this->logger) {
-                    $this->logger->error($e->getMessage(), ['trace' => $e->getTrace()]);
-                }
                 $this->emit('errorCreateWorker', [$e]);
                 throw $e;
             }
