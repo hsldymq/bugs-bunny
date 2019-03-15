@@ -43,8 +43,7 @@ $dispatcher->on('shutdown', function (Dispatcher $dispatcher) {
     echo "Consumed Message: {$stat['consumed']}\n";
     echo "Processed Message: {$stat['processed']}\n";
     echo "Peak Worker Number: {$stat['peakWorkerNum']}\n";
-    echo "Max Memory Usage: ".number_format($stat['memoryUsage']).' Bytes'.PHP_EOL;
-    echo "Max Peak Memory Usage: ".number_format($stat['peakMemoryUsage']).' Bytes'.PHP_EOL;
+    echo "Peak Memory Usage: ".number_format(memory_get_peak_usage()).' Bytes'.PHP_EOL;
 });
 
 $dispatcher->addSignalHandler(SIGINT, function () use ($dispatcher) {
