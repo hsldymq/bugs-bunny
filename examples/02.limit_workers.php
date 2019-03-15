@@ -14,7 +14,8 @@ $factory->setMessageHandler(function (QueueMessage $message, Worker $worker) {
     usleep(200000);
 });
 
-$conn = new Connection(['host' => '127.0.0.1',
+$conn = new Connection([
+    'host' => '127.0.0.1',
     'port' => 5672,
     'vhost' => '/',
     'user' => 'guest',
