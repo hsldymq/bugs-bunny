@@ -102,7 +102,7 @@ class Dispatcher extends AbstractMaster
     /**
      * @var int 限制了缓存消息的数量,如果到达或超过此值时会停止从AMQP消费消息,直到缓存的消息都派发完为止
      */
-    private $cacheLimit = 100;
+    private $cacheLimit = 0;
 
     /**
      * @var int 僵尸进程检查周期(秒)
@@ -152,7 +152,7 @@ class Dispatcher extends AbstractMaster
         $this->state = self::STATE_RUNNING;
 
         while ($this->state !== self::STATE_SHUTDOWN) {
-            $this->process(10);
+            $this->process($this->patrolPeriod);
             // 补杀僵尸进程
             for ($i = 0, $len = count($this->idMap); $i < $len; $i++) {
                 $pid = pcntl_wait($status, WNOHANG);
