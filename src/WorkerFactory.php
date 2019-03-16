@@ -4,7 +4,6 @@ namespace Archman\BugsBunny;
 
 use Archman\Whisper\AbstractWorker;
 use Archman\Whisper\Interfaces\WorkerFactoryInterface;
-use Psr\Log\LoggerInterface;
 
 class WorkerFactory implements WorkerFactoryInterface
 {
@@ -30,11 +29,6 @@ class WorkerFactory implements WorkerFactoryInterface
     private $msgHandler;
 
     /**
-     * @var LoggerInterface
-     */
-    private $logger;
-
-    /**
      * @var null|int
      */
     private $idleShutdownSec = null;
@@ -43,12 +37,12 @@ class WorkerFactory implements WorkerFactoryInterface
     {
         $worker = new Worker($id, $socketFD);
 
-        foreach ($this->signalHandlers as $s => $h) {
-            $worker->addSignalHandler($s, $h);
+        foreach ($this->signalHandlers as $each) {
+            $worker->addSignalHandler($each[0], $each[1]);
         }
 
-        foreach ($this->eventHandlers as $e => $h) {
-            $worker->on($e, $h);
+        foreach ($this->eventHandlers as $each) {
+            $worker->on($each[0], $each[1]);
         }
 
         if ($this->msgHandler) {
@@ -92,14 +86,6 @@ class WorkerFactory implements WorkerFactoryInterface
     public function setMessageHandler(callable $handler)
     {
         $this->msgHandler = $handler;
-    }
-
-    /**
-     * @param LoggerInterface $logger
-     */
-    public function setLogger(LoggerInterface $logger)
-    {
-        $this->logger = $logger;
     }
 
     /**
