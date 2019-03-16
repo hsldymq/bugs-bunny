@@ -37,6 +37,11 @@ $dispatcher->on('workerExit', function (string $workerID, int $pid, Dispatcher $
     echo "Worker {$workerID} Quit, PID: {$pid}, {$count} Remains.\n";
 });
 
+$dispatcher->on('error', function (string $reason, \Throwable $e, Dispatcher $dispatcher) {
+    echo "Error, Reason: {$reason}, Message: {$e->getMessage()}\n";
+    $dispatcher->shutdown();
+});
+
 $dispatcher->on('shutdown', function (Dispatcher $dispatcher) {
     $stat = $dispatcher->getStat();
     echo "\n";

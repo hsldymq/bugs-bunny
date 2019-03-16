@@ -32,12 +32,17 @@ $dispatcher->on('processed', function (string $workerID, Dispatcher $master) {
     $process = $stat['processed'];
     $consumed = $stat['consumed'];
 
-    echo "{$process}/{$consumed} Master - Worker {$workerID} Has Processed The Message, Workers:{$master->countWorkers()}.\n";
+    echo "{$process}/{$consumed} Master - Worker {$workerID} Has Processed The Message, Workers:{$master->countWorkers()}, Schedulable:{$master->countSchedulable()}.\n";
 });
 
 $dispatcher->on('workerExit', function (string $workerID, int $pid, Dispatcher $dispatcher) {
     $count = $dispatcher->countWorkers();
     echo "Worker {$workerID} Quit, PID: {$pid}, {$count} Remains.\n";
+});
+
+$dispatcher->on('error', function (string $reason, \Throwable $e, Dispatcher $dispatcher) {
+    echo "Error, Reason: {$reason}, Message: {$e->getMessage()}\n";
+    $dispatcher->shutdown();
 });
 
 $dispatcher->on('shutdown', function (Dispatcher $dispatcher) {

@@ -103,7 +103,7 @@ class Dispatcher extends AbstractMaster
     /**
      * @var int 限制了缓存消息的数量,如果到达或超过此值时会停止从AMQP消费消息,直到缓存的消息都派发完为止
      */
-    private $cacheLimit = 100;
+    private $cacheLimit = 1;
 
     /**
      * @var int 僵尸进程检查周期(秒)
@@ -153,7 +153,7 @@ class Dispatcher extends AbstractMaster
         $this->state = self::STATE_RUNNING;
 
         while ($this->state !== self::STATE_SHUTDOWN) {
-            $this->process($this->patrolPeriod);
+            $this->process(10);
             // 补杀僵尸进程
             for ($i = 0, $len = count($this->idMap); $i < $len; $i++) {
                 $pid = pcntl_wait($status, WNOHANG);
@@ -162,6 +162,10 @@ class Dispatcher extends AbstractMaster
                 }
                 $this->clearWorker($this->idMap[$pid] ?? '', $pid);
             }
+
+            (function () {
+                print_r($this->scheduleLevels);
+            })->bindTo($this->workerScheduler, $this->workerScheduler)();
         }
 
         $this->emit('shutdown');
@@ -208,6 +212,7 @@ class Dispatcher extends AbstractMaster
                                 $this->dispatch($msg);
                             } catch (\Throwable $e) {
                                 array_unshift($this->cachedMessages, $msg);
+                                $this->on('error', ['dispatchingMessage', $e]);
                             }
                         } else {
                             $this->connection->resume();
@@ -271,6 +276,7 @@ class Dispatcher extends AbstractMaster
             if (count($this->cachedMessages) >= $this->cacheLimit) {
                 $this->connection->pause();
                 $this->shutdown();
+                echo "hehe\n";
             }
 
             // 边沿触发
@@ -371,6 +377,33 @@ class Dispatcher extends AbstractMaster
     }
 
     /**
+     * 返回还可以调度的进程数量
+     *
+     * @return int
+     */
+    public function countSchedulable(): int
+    {
+        return $this->workerScheduler->countSchedulable();
+    }
+
+    /**
+     * 是否已到达派发消息上限.
+     *
+     * 上限是指创建的worker数量已达上限,并且已没有空闲worker可以调度
+     *
+     * @return bool
+     */
+    public function limitReached(): bool
+    {
+        if ($this->maxWorkers === -1) {
+            return false;
+        }
+
+        return $this->countWorkers() >= $this->maxWorkers
+            && $this->workerScheduler->countSchedulable() === 0;
+    }
+
+    /**
      * 派发消息.
      *
      * @param array $message
@@ -396,27 +429,10 @@ class Dispatcher extends AbstractMaster
     }
 
     /**
-     * 是否已到达派发消息上限.
-     *
-     * 上限是指创建的worker数量已达上限,并且已没有空闲worker可以调度
-     *
-     * @return bool
-     */
-    protected function limitReached(): bool
-    {
-        if ($this->maxWorkers === -1) {
-            return false;
-        }
-
-        return $this->countWorkers() >= $this->maxWorkers
-            && $this->workerScheduler->countSchedulable() === 0;
-    }
-
-    /**
      * @param string $workerID
      * @param int $pid
      */
-    protected function clearWorker(string $workerID, int $pid)
+    private function clearWorker(string $workerID, int $pid)
     {
         $this->workerScheduler->remove($workerID);
         unset($this->workersInfo[$workerID]);
@@ -429,7 +445,7 @@ class Dispatcher extends AbstractMaster
      * @return string worker id
      * @throws
      */
-    protected function scheduleWorker(): string
+    private function scheduleWorker(): string
     {
         while (($workerID = $this->workerScheduler->allocate()) !== null) {
             $c = $this->getCommunicator($workerID);
