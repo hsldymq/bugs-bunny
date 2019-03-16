@@ -46,17 +46,17 @@ class Dispatcher extends AbstractMaster
      *      ...
      * ]
      */
-    protected $workersInfo = [];
+    private $workersInfo = [];
 
     /**
      * @var WorkerFactoryInterface
      */
-    protected $workerFactory;
+    private $workerFactory;
 
     /**
      * @var WorkerScheduler
      */
-    protected $workerScheduler;
+    private $workerScheduler;
 
     /**
      * @var int $maxWorkers 子进程数量上限. -1为不限制
@@ -64,12 +64,12 @@ class Dispatcher extends AbstractMaster
      * 当子进程到达上线后,调度器会停止接受消息队列的消息.
      * 等待有子进程闲置后,继续派发消息.
      */
-    protected $maxWorkers = -1;
+    private $maxWorkers = -1;
 
     /**
      * @var int 每个worker的消息队列容量
      */
-    protected $workerCapacity = 1;
+    private $workerCapacity = 1;
 
     /**
      * @var array
@@ -78,7 +78,7 @@ class Dispatcher extends AbstractMaster
      *      ...
      * ]
      */
-    protected $idMap = [];
+    private $idMap = [];
 
     /**
      * @var array 统计信息.
@@ -88,7 +88,7 @@ class Dispatcher extends AbstractMaster
      *      'peakWorkerNum' => (int),       // worker数量峰值
      * ]
      */
-    protected $stat = [
+    private $stat = [
         'consumed' => 0,
         'processed' => 0,
         'peakWorkerNum' => 0,
@@ -107,12 +107,12 @@ class Dispatcher extends AbstractMaster
     /**
      * @var int 僵尸进程检查周期(秒)
      */
-    protected $patrolPeriod = 300;
+    private $patrolPeriod = 300;
 
     /**
      * @var string 运行状态 self::STATE_RUNNING / self::STATE_SHUTTING / self::SHUTDOWN
      */
-    protected $state = self::STATE_SHUTDOWN;
+    private $state = self::STATE_SHUTDOWN;
 
     public function __construct(AMQPConnectionInterface $connection, WorkerFactoryInterface $factory)
     {
