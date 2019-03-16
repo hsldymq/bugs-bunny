@@ -178,6 +178,22 @@ class Connection
     }
 
     /**
+     * @return bool
+     */
+    public function isConnected(): bool
+    {
+        return $this->connected;
+    }
+
+    /**
+     * @return bool
+     */
+    public function isPaused(): bool
+    {
+        return $this->paused;
+    }
+
+    /**
      * @param string$tag
      *
      * @return string|null
