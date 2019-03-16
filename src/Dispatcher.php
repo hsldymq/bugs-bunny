@@ -9,7 +9,6 @@ use Archman\Whisper\Message;
 use Bunny\Async\Client;
 use Bunny\Channel;
 use Bunny\Message as AMQPMessage;
-use Psr\Log\LoggerInterface;
 
 /**
  * @event message       参数: string $workerID, \Archman\Whisper\Message $msg
@@ -115,7 +114,7 @@ class Dispatcher extends AbstractMaster
      */
     protected $state = self::STATE_SHUTDOWN;
 
-    public function __construct(Connection $connection, WorkerFactoryInterface $factory)
+    public function __construct(AMQPConnectionInterface $connection, WorkerFactoryInterface $factory)
     {
         parent::__construct();
 

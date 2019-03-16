@@ -7,7 +7,7 @@ use Bunny\Async\Client;
 use Bunny\Channel;
 use React\EventLoop\LoopInterface;
 
-class Connection
+class Connection implements AMQPConnectionInterface
 {
     /**
      * @var LoopInterface
