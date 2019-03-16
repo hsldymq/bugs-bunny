@@ -158,12 +158,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/hsldymq/whisper.git",
-                "reference": "ebfb6e2cf31d9909a343d69d9edf60ba6fc027af"
+                "reference": "1d716077078eedf1eb6f3c60e442102c564e6952"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/hsldymq/whisper/zipball/ebfb6e2cf31d9909a343d69d9edf60ba6fc027af",
-                "reference": "ebfb6e2cf31d9909a343d69d9edf60ba6fc027af",
+                "url": "https://api.github.com/repos/hsldymq/whisper/zipball/1d716077078eedf1eb6f3c60e442102c564e6952",
+                "reference": "1d716077078eedf1eb6f3c60e442102c564e6952",
                 "shasum": "",
                 "mirrors": [
                     {
@@ -189,7 +189,7 @@
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
-            "time": "2019-03-15T17:53:40+00:00"
+            "time": "2019-03-16T10:30:50+00:00"
         },
         {
             "name": "psr/log",
