@@ -8,19 +8,16 @@ use Psr\Log\LoggerInterface;
 use React\EventLoop\TimerInterface;
 
 /**
- * @event message
- * @event workerCreated
- * @event errorDecodingMessage
- * @event errorProcessingMessage
+ * @event message           参数: \Archman\Whisper\Message $msg, Worker $worker
+ * @event workerCreated     参数: string $workerID, Worker $worker
+ * @event error             参数: string $reason, \Throwable $ex, Worker $worker
+ *                          $reason enum:
+ *                              'decodingMessage'
+ *                              'processingMessage'
  */
 class Worker extends AbstractWorker
 {
     use EventEmitterTrait;
-
-    /**
-     * @var LoggerInterface
-     */
-    private $logger;
 
     /**
      * @var callable
@@ -74,10 +71,10 @@ class Worker extends AbstractWorker
 
         $contentArray = json_decode($cnt, true);
         if (json_last_error() !== JSON_ERROR_NONE) {
-            if ($this->logger) {
-                $this->logger->error("Worker failed to decode message: ".json_last_error_msg(), ['content' => $cnt]);
-            }
-            $this->emit('errorDecodingMessage', [$cnt]);
+            $this->emit('error', [
+                'decodingMessage',
+                new \Exception(sprintf("Error:%s, Content:%s", json_last_error_msg(), $cnt))
+            ]);
             $this->trySetShutdownTimer();
 
             return;
@@ -86,10 +83,6 @@ class Worker extends AbstractWorker
         switch ($msgType) {
             case MessageTypeEnum::QUEUE:
                 $this->receive++;
-
-                if ($this->logger) {
-                    $this->logger->debug("Queue message incoming", ['content' => $cnt]);
-                }
 
                 if (!$this->messageHandler) {
                     goto ending;
@@ -103,12 +96,7 @@ class Worker extends AbstractWorker
                     $queueMsg = new QueueMessage($info);
                     call_user_func($this->messageHandler, $queueMsg, $this);
                 } catch (\Throwable $e) {
-                    if ($this->logger) {
-                        $this->logger->error("Worker failed to process message: {$e->getMessage()}", [
-                            'content' => $info
-                        ]);
-                    }
-                    $this->emit('errorProcessingMessage', [$cnt]);
+                    $this->emit('error', ['processingMessage', $cnt]);
                 }
 
                 ending:
@@ -119,19 +107,11 @@ class Worker extends AbstractWorker
 
                 break;
             case MessageTypeEnum::LAST_MSG:
+                echo "{$this->getWorkerID()} Received LAST_MSG\n";
                 $this->noMore = true;
                 break;
             default:
-                try {
-                    $this->emit('message', [$msg]);
-                } catch (\Throwable $e) {
-                    if ($this->logger) {
-                        $this->logger->error("Handle delegate message($msgType) error: {$e->getMessage()}", [
-                            'content' => $msg->getContent(),
-                        ]);
-                    }
-                }
-
+                $this->emit('message', [$msg]);
         }
 
         $this->trySetShutdownTimer();
@@ -175,14 +155,6 @@ class Worker extends AbstractWorker
     public function setMessageHandler(callable $h)
     {
         $this->messageHandler = $h;
-    }
-
-    /**
-     * @param LoggerInterface $logger
-     */
-    public function setLogger(LoggerInterface $logger)
-    {
-        $this->logger = $logger;
     }
 
     public function shutdown()
