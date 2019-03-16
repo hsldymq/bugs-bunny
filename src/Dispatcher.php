@@ -12,15 +12,17 @@ use Bunny\Message as AMQPMessage;
 use Psr\Log\LoggerInterface;
 
 /**
- * @event message
- * @event processed
- * @event limitReached
- * @event workerExit
- * @event errorShuttingDown
- * @event errorSendingMessage
- * @event errorMessageHandling
- * @event errorDispatchingMessage
- * @event errorCreateWorker
+ * @event message       参数: string $workerID, \Archman\Whisper\Message $msg
+ * @event processed     参数: string $workerID, Dispatcher $master
+ * @event workerExit    参数: string $workerID, int $pid, Dispatcher $master
+ * @event limitReached  参数: Dispatcher $master
+ * @event error         参数: string $reason, \Throwable $ex, Dispatcher $master
+ *                      $reason enum:
+ *                          'shuttingDown'
+ *                          'sendingMessage'
+ *                          'handlingMessage'
+ *                          'dispatchingMessage',
+ *                          'creatingWorker'
  */
 class Dispatcher extends AbstractMaster
 {
@@ -99,6 +101,11 @@ class Dispatcher extends AbstractMaster
     private $cachedMessages = [];
 
     /**
+     * @var int 限制了缓存消息的数量,如果到达或超过此值时会停止从AMQP消费消息,直到缓存的消息都派发完为止
+     */
+    private $cacheLimit = 100;
+
+    /**
      * @var int 僵尸进程检查周期(秒)
      */
     protected $patrolPeriod = 300;
@@ -108,10 +115,6 @@ class Dispatcher extends AbstractMaster
      */
     protected $state = self::STATE_SHUTDOWN;
 
-    /**
-     * @param Connection $connection
-     * @param WorkerFactoryInterface $factory
-     */
     public function __construct(Connection $connection, WorkerFactoryInterface $factory)
     {
         parent::__construct();
@@ -179,7 +182,7 @@ class Dispatcher extends AbstractMaster
                 $this->sendMessage($workerID, new Message(MessageTypeEnum::LAST_MSG, ''));
             } catch (\Throwable $e) {
                 // TODO 如果没有成功向所有进程发送关闭,考虑在其他地方需要做重试机制
-                $this->emit('errorShuttingDown', [$e]);
+                $this->emit('error', ['shuttingDown', $e]);
             }
         }
     }
@@ -210,6 +213,7 @@ class Dispatcher extends AbstractMaster
                             $this->connection->resume();
                         }
                     }
+
                     $this->emit('processed', [$workerID]);
                     break;
                 case MessageTypeEnum::STOP_SENDING:
@@ -220,7 +224,7 @@ class Dispatcher extends AbstractMaster
                             'meta' => ['sent' => $this->workersInfo[$workerID]['sent']],
                         ])));
                     } catch (\Throwable $e) {
-                        $this->emit('errorSendingMessage', [$e]);
+                        $this->emit('error', ['SendingMessage', $e]);
                     }
                     break;
                 case MessageTypeEnum::KILL_ME:
@@ -230,7 +234,7 @@ class Dispatcher extends AbstractMaster
                     $this->emit('message', [$workerID, $message]);
             }
         } catch (\Throwable $e) {
-            $this->emit('errorMessageHandling', [$e]);
+            $this->emit('error', ['handlingMessage', $e]);
         }
     }
 
@@ -252,19 +256,23 @@ class Dispatcher extends AbstractMaster
 
         if ($reachedBefore) {
             $this->cachedMessages[] = $message;
-            $channel->ack($AMQPMessage)->done();
-            return;
-        }
-
-        try {
-            $this->dispatch($message);
-        } catch (\Throwable $e) {
-            return;
+        } else {
+            try {
+                $this->dispatch($message);
+            } catch (\Throwable $e) {
+                $this->emit('error', ['dispatchingMessage', $e]);
+                return;
+            }
         }
 
         $channel->ack($AMQPMessage)->done();
         if ($this->limitReached()) {
-            $this->connection->pause();
+            // 无空闲worker且缓存消息已满
+            if (count($this->cachedMessages) >= $this->cacheLimit) {
+                $this->connection->pause();
+                $this->shutdown();
+            }
+
             // 边沿触发
             if (!$reachedBefore) {
                 $this->emit('limitReached');
@@ -286,6 +294,26 @@ class Dispatcher extends AbstractMaster
         }
 
         return $this;
+    }
+
+    /**
+     * 设置缓存消息的数量上限.
+     *
+     * 当限制了worker上限并且worker跑满没有空闲时,到来消息会被缓存起来
+     * 待有空闲worker时优先从缓存中取出小心进行派发
+     * 这个方法限制了缓存的大小,当缓存到达上限后,会暂停从amqp server中消费消息
+     * 直到清空了缓存为止
+     * 建议不要设置太大,因为可能会大量消耗master进程的内存资源,不利于进程的稳定常驻运行.
+     *
+     * @param int $limit >= 0
+     */
+    public function setCacheLimit(int $limit)
+    {
+        if ($limit < 0) {
+            return;
+        }
+
+        $this->cacheLimit = $limit;
     }
 
     /**
@@ -359,7 +387,6 @@ class Dispatcher extends AbstractMaster
             $this->sendMessage($workerID, new Message(MessageTypeEnum::QUEUE, json_encode($message)));
         } catch (\Throwable $e) {
             $this->workerScheduler->release($workerID);
-            $this->emit('errorDispatchingMessage', [$e]);
             throw $e;
         }
         $this->stat['consumed']++;
@@ -415,7 +442,7 @@ class Dispatcher extends AbstractMaster
             try {
                 $workerID = $this->createWorker($this->workerFactory);
             } catch (\Throwable $e) {
-                $this->emit('errorCreateWorker', [$e]);
+                $this->emit('error', ['creatingWorker', $e]);
                 throw $e;
             }
             $this->stat['peakWorkerNum'] = max($this->countWorkers(), $this->stat['peakWorkerNum'] + 1);
