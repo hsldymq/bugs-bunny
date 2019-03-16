@@ -32,7 +32,7 @@ $dispatcher->on('processed', function (string $workerID, Dispatcher $master) {
     echo "{$process}/{$consumed} Master - Worker {$workerID} Has Processed The Message, Workers:{$master->countWorkers()}.\n";
 });
 
-$dispatcher->on('workerQuit', function (string $workerID, int $pid, Dispatcher $dispatcher) {
+$dispatcher->on('workerExit', function (string $workerID, int $pid, Dispatcher $dispatcher) {
     $count = $dispatcher->countWorkers();
     echo "Worker {$workerID} Quit, PID: {$pid}, {$count} Remains.\n";
 });

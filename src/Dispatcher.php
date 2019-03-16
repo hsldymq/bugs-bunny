@@ -15,7 +15,7 @@ use Psr\Log\LoggerInterface;
  * @event message
  * @event processed
  * @event limitReached
- * @event workerQuit
+ * @event workerExit
  * @event errorShuttingDown
  * @event errorSendingMessage
  * @event errorMessageHandling
@@ -123,7 +123,7 @@ class Dispatcher extends AbstractMaster
 
         $this->on('__workerExit', function (string $workerID, int $pid) {
             try {
-                $this->emit('workerQuit', [$workerID, $pid]);
+                $this->emit('workerExit', [$workerID, $pid]);
             } finally {
                 $this->clearWorker($workerID, $pid);
                 if ($this->state === self::STATE_SHUTTING && $this->countWorkers() === 0) {
