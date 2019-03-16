@@ -13,8 +13,13 @@ $factory->setMessageHandler(function (QueueMessage $message, Worker $worker) {
     // 模拟正常处理逻辑
     usleep(1000);
 });
+$factory->registerEvent('error', function (string $reason, \Throwable $e, Worker $worker) {
+    echo "Worker Error. Reason: {$reason}, Message: {$e->getMessage()}\n";
+    $worker->shutdown();
+});
 
-$conn = new Connection(['host' => '127.0.0.1',
+$conn = new Connection([
+    'host' => '127.0.0.1',
     'port' => 5672,
     'vhost' => '/',
     'user' => 'guest',
@@ -37,7 +42,7 @@ $dispatcher->on('workerExit', function (string $workerID, int $pid, Dispatcher $
 });
 
 $dispatcher->on('error', function (string $reason, \Throwable $e, Dispatcher $dispatcher) {
-    echo "Error, Reason: {$reason}, Message: {$e->getMessage()}\n";
+    echo "Master Error, Reason: {$reason}, Message: {$e->getMessage()}\n";
     $dispatcher->shutdown();
 });
 

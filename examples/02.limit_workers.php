@@ -13,6 +13,9 @@ $factory->setMessageHandler(function (QueueMessage $message, Worker $worker) {
     // 一次处理200ms,这会造成消息量很多时,Dispatcher大量fork出worker进行处理
     usleep(200000);
 });
+$factory->registerEvent('error', function (string $reason, \Throwable $e, Worker $worker) {
+    echo "Worker Error. Reason: {$reason}, Message: {$e->getMessage()}\n";
+});
 
 $conn = new Connection([
     'host' => '127.0.0.1',
@@ -41,7 +44,7 @@ $dispatcher->on('workerExit', function (string $workerID, int $pid, Dispatcher $
 });
 
 $dispatcher->on('error', function (string $reason, \Throwable $e, Dispatcher $dispatcher) {
-    echo "Error, Reason: {$reason}, Message: {$e->getMessage()}\n";
+    echo "Master Error, Reason: {$reason}, Message: {$e->getMessage()}\n";
     $dispatcher->shutdown();
 });
 
