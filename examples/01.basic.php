@@ -10,9 +10,8 @@ use Archman\BugsBunny\Connection;
 
 $factory = new WorkerFactory();
 $factory->setMessageHandler(function (QueueMessage $message, Worker $worker) {
-    // 10us ~ 100us
     // 模拟正常处理逻辑
-    usleep(mt_rand(10, 100));
+    usleep(1000);
 });
 
 $conn = new Connection(['host' => '127.0.0.1',
