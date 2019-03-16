@@ -57,7 +57,7 @@ class Connection
     /**
      * @var array
      * [
-     *      $tag = $queue,
+     *      $tag => $queue,
      *      ...
      * ]
      */
@@ -110,11 +110,12 @@ class Connection
 
         $this->eventLoop = $eventLoop;
         $this->handler = $consumeHandler;
-        $this->connected = true;
 
         for ($i = 0; $i < $this->connectionNum; $i++) {
             $this->makeConnection();
         }
+
+        $this->connected = true;
     }
 
     public function disconnect()
@@ -151,11 +152,8 @@ class Connection
         }
 
         foreach ($this->connections as $index => $each) {
-            $tags = $each['tags'];
-            $this->unbindConsumer($each['channel'], $tags);
-            foreach ($tags as $i => $t) {
-                unset($this->connections[$index]['tags'][$i]);
-                unset($this->queueMap[$t]);
+            foreach ($each['tags'] as $tag) {
+                $this->unbindConsumer($each['channel'], $tag);
             }
         }
         $this->paused = true;
@@ -171,9 +169,10 @@ class Connection
         }
 
         foreach ($this->connections as $index => $each) {
-            $tags = $this->bindConsumer($each['channel'], $this->queues, $this->handler);
-            $this->connections[$index]['tags'] = array_keys($tags);
-            $this->queueMap = array_merge($this->queueMap, $tags);
+            foreach ($each['tags'] as $tag) {
+                $queue = $this->queueMap[$tag];
+                $this->bindConsumer($each['channel'], $tag, $queue, $this->handler);
+            }
         }
         $this->paused = false;
     }
@@ -214,44 +213,39 @@ class Connection
                 }, $onReject);
             }, $onReject)
             ->then(function (Channel $channel) use ($client) {
-                $tags = $this->bindConsumer($channel, $this->queues, $this->handler);
+                $map = [];
+                foreach ($this->queues as $queue) {
+                    $tag = Helper::uuid();
+                    $this->bindConsumer($channel, $tag, $queue, $this->handler);
+                    $map[$tag] = $queue;
+                }
                 $this->connections[] = [
                     'client' => $client,
                     'channel' => $channel,
-                    'tags' => array_keys($tags),
+                    'tags' => array_keys($map),
                 ];
-                $this->queueMap = array_merge($this->queueMap, $tags);
+                $this->queueMap = array_merge($this->queueMap, $map);
             }, $onReject)
             ->done(function () {}, $onReject);
     }
 
     /**
      * @param Channel $channel
-     * @param array $queues
+     * @param string $tag
+     * @param string $queue
      * @param callable $handler
-     *
-     * @return array
      */
-    private function bindConsumer(Channel $channel, array $queues, callable $handler): array
+    private function bindConsumer(Channel $channel, string $tag, string $queue, callable $handler)
     {
-        $tags = [];
-        foreach ($queues as $queueName) {
-            $tag = Helper::uuid();
-            $channel->consume($handler, $queueName, $tag)->done();
-            $tags[$tag] = $queueName;
-        }
-
-        return $tags;
+        $channel->consume($handler, $queue, $tag)->done();
     }
 
     /**
      * @param Channel $channel
-     * @param array $tags
+     * @param string $tag
      */
-    private function unbindConsumer(Channel $channel, array $tags)
+    private function unbindConsumer(Channel $channel, string $tag)
     {
-        foreach ($tags as $tag) {
-            $channel->cancel($tag)->done();
-        }
+        $channel->cancel($tag)->done();
     }
 }
