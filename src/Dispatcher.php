@@ -103,7 +103,7 @@ class Dispatcher extends AbstractMaster
     /**
      * @var int 限制了缓存消息的数量,如果到达或超过此值时会停止从AMQP消费消息,直到缓存的消息都派发完为止
      */
-    private $cacheLimit = 1;
+    private $cacheLimit = 100;
 
     /**
      * @var int 僵尸进程检查周期(秒)
@@ -162,10 +162,6 @@ class Dispatcher extends AbstractMaster
                 }
                 $this->clearWorker($this->idMap[$pid] ?? '', $pid);
             }
-
-            (function () {
-                print_r($this->scheduleLevels);
-            })->bindTo($this->workerScheduler, $this->workerScheduler)();
         }
 
         $this->emit('shutdown');
@@ -183,7 +179,7 @@ class Dispatcher extends AbstractMaster
         $this->state = self::STATE_SHUTTING;
         foreach ($this->workersInfo as $workerID => $each) {
             try {
-                $this->sendMessage($workerID, new Message(MessageTypeEnum::LAST_MSG, ''));
+                $this->sendLastMessage($workerID);
             } catch (\Throwable $e) {
                 // TODO 如果没有成功向所有进程发送关闭,考虑在其他地方需要做重试机制
                 $this->emit('error', ['shuttingDown', $e]);
@@ -212,7 +208,7 @@ class Dispatcher extends AbstractMaster
                                 $this->dispatch($msg);
                             } catch (\Throwable $e) {
                                 array_unshift($this->cachedMessages, $msg);
-                                $this->on('error', ['dispatchingMessage', $e]);
+                                $this->emit('error', ['dispatchingMessage', $e]);
                             }
                         } else {
                             $this->connection->resume();
@@ -224,12 +220,9 @@ class Dispatcher extends AbstractMaster
                 case MessageTypeEnum::STOP_SENDING:
                     $this->workerScheduler->retire($workerID);
                     try {
-                        $this->sendMessage($workerID, new Message(MessageTypeEnum::LAST_MSG, json_encode([
-                            'messageID' => Helper::uuid(),
-                            'meta' => ['sent' => $this->workersInfo[$workerID]['sent']],
-                        ])));
+                        $this->sendLastMessage($workerID);
                     } catch (\Throwable $e) {
-                        $this->emit('error', ['SendingMessage', $e]);
+                        $this->emit('error', ['sendingMessage', $e]);
                     }
                     break;
                 case MessageTypeEnum::KILL_ME:
@@ -254,7 +247,8 @@ class Dispatcher extends AbstractMaster
                     'queue' => $this->connection->getQueue($AMQPMessage->consumerTag),
                     'routingKey' => $AMQPMessage->routingKey,
                 ],
-                'sent' => -1,
+                'sent' => -1,       // 在dispatch的时候会填上准确的值,它代表已经向该worker派发了多少条队列消息
+                                    // 用于worker退出阶段处理掉剩余的消息
             ],
             'content' => $AMQPMessage->content,
         ];
@@ -275,8 +269,6 @@ class Dispatcher extends AbstractMaster
             // 无空闲worker且缓存消息已满
             if (count($this->cachedMessages) >= $this->cacheLimit) {
                 $this->connection->pause();
-                $this->shutdown();
-                echo "hehe\n";
             }
 
             // 边沿触发
@@ -473,5 +465,13 @@ class Dispatcher extends AbstractMaster
         }
 
         return $workerID;
+    }
+
+    private function sendLastMessage(string $workerID)
+    {
+        $this->sendMessage($workerID, new Message(MessageTypeEnum::LAST_MSG, json_encode([
+            'messageID' => Helper::uuid(),
+            'meta' => ['sent' => $this->workersInfo[$workerID]['sent']],
+        ])));
     }
 }
