@@ -4,7 +4,6 @@ namespace Archman\BugsBunny;
 
 use Archman\Whisper\AbstractWorker;
 use Archman\Whisper\Message;
-use Psr\Log\LoggerInterface;
 use React\EventLoop\TimerInterface;
 
 /**
@@ -85,7 +84,7 @@ class Worker extends AbstractWorker
                 $this->receive++;
 
                 if (!$this->messageHandler) {
-                    goto ending;
+                    goto end;
                 }
 
                 $info = array_merge(
@@ -99,7 +98,7 @@ class Worker extends AbstractWorker
                     $this->emit('error', ['processingMessage', $cnt]);
                 }
 
-                ending:
+                end:
                 $this->sendMessage(new Message(MessageTypeEnum::PROCESSED, ''));
                 if ($this->state === 'shutting') {
                     $this->sendMessage(new Message(MessageTypeEnum::STOP_SENDING, ''));
