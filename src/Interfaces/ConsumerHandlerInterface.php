@@ -8,5 +8,10 @@ use Bunny\Message as AMQPMessage;
 
 interface ConsumerHandlerInterface
 {
-    public function onConsume(AMQPMessage $AMQPMessage, string $queue, Channel $channel, Client $client);
+    public function onConsume(
+        AMQPMessage $AMQPMessage,
+        string $queue,
+        Channel $channel,
+        Client $client
+    ): bool;
 }
