@@ -2,6 +2,8 @@
 
 namespace Archman\BugsBunny;
 
+use Archman\BugsBunny\Interfaces\AMQPConnectionInterface;
+use Archman\BugsBunny\Interfaces\ConsumerHandlerInterface;
 use Archman\Whisper\AbstractMaster;
 use Archman\Whisper\Helper;
 use Archman\Whisper\Interfaces\WorkerFactoryInterface;
@@ -23,7 +25,7 @@ use Bunny\Message as AMQPMessage;
  *                          'dispatchingMessage',
  *                          'creatingWorker'
  */
-class Dispatcher extends AbstractMaster
+class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
 {
     use EventEmitterTrait;
 
@@ -235,15 +237,19 @@ class Dispatcher extends AbstractMaster
         }
     }
 
-    public function onConsume(AMQPMessage $AMQPMessage, Channel $channel, Client $client)
-    {
+    public function onConsume(
+        AMQPMessage $AMQPMessage,
+        string $queue,
+        Channel $channel,
+        Client $client
+    ): bool {
         $reachedBefore = $this->limitReached();
         $message = [
             'messageID' => Helper::uuid(),
             'meta' => [
                 'amqp' => [
                     'exchange' => $AMQPMessage->exchange,
-                    'queue' => $this->connection->getQueue($AMQPMessage->consumerTag),
+                    'queue' => $queue,
                     'routingKey' => $AMQPMessage->routingKey,
                 ],
                 'sent' => -1,       // 在dispatch的时候会填上准确的值,它代表已经向该worker派发了多少条队列消息
@@ -259,21 +265,25 @@ class Dispatcher extends AbstractMaster
                 $this->dispatch($message);
             } catch (\Throwable $e) {
                 $this->emit('error', ['dispatchingMessage', $e]);
-                return;
+                return false;
             }
         }
 
-        $channel->ack($AMQPMessage)->done();
-        if ($this->limitReached()) {
-            // 无空闲worker且缓存消息已满
-            if (count($this->cachedMessages) >= $this->cacheLimit) {
-                $this->connection->pause();
-            }
 
-            // 边沿触发
-            if (!$reachedBefore) {
-                $this->emit('limitReached');
+        try {
+            if ($this->limitReached()) {
+                // 无空闲worker且缓存消息已满
+                if (count($this->cachedMessages) >= $this->cacheLimit) {
+                    $this->connection->pause();
+                }
+
+                // 边沿触发
+                if (!$reachedBefore) {
+                    $this->emit('limitReached');
+                }
             }
+        } finally {
+            return true;
         }
     }
 
