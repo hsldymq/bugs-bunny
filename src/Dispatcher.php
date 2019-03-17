@@ -34,7 +34,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
     const STATE_SHUTDOWN = 3;
 
     /**
-     * @var Connection
+     * @var AMQPConnectionInterface
      */
     private $connection;
 
@@ -69,11 +69,6 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
     private $maxWorkers = -1;
 
     /**
-     * @var int 每个worker的消息队列容量
-     */
-    private $workerCapacity = 1;
-
-    /**
      * @var array
      * [
      *      $pid => $workerID,
@@ -104,7 +99,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
     /**
      * @var int 限制了缓存消息的数量,如果到达或超过此值时会停止从AMQP消费消息,直到缓存的消息都派发完为止
      */
-    private $cacheLimit = 0;
+    private $cacheLimit = 100;
 
     /**
      * @var int 僵尸进程检查周期(秒)
@@ -116,14 +111,30 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
      */
     private $state = self::STATE_SHUTDOWN;
 
+    /**
+     * @var \Throwable
+     */
+    private $shutdownError;
+
     public function __construct(AMQPConnectionInterface $connection, WorkerFactoryInterface $factory)
     {
         parent::__construct();
 
-        $this->workerScheduler = new WorkerScheduler($this->workerCapacity);
-        $this->workerFactory = $factory;
         $this->connection = $connection;
-        $this->connection->connect($this->getEventLoop(), [$this, 'onConsume']);
+        $this->connection
+            ->connect($this->getEventLoop(), $this)
+            ->then(function (\Throwable $reason) {
+                throw $reason;
+            });
+
+        // 不在需要为每个worker设置一个的缓冲队列了
+        // 因为有了全局缓冲
+        // 对每个worker设置一个缓冲队列有一个问题
+        //      如果一个worker队列满了,但是它处理当前消息很慢
+        //      那么队列中的消息就会一直等待,但它们其实可以调度给其他已经空闲了的worker在处理
+        // 基于以上,这里传参恒为1
+        $this->workerScheduler = new WorkerScheduler(100);
+        $this->workerFactory = $factory;
 
         $this->on('__workerExit', function (string $workerID, int $pid) {
             try {
@@ -136,13 +147,15 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                 }
             }
         });
+
+        $this->connection->on('resumable', function () {
+            $this->tryDispatchCached();
+        });
     }
 
-    public function __destruct()
-    {
-        $this->connection->disconnect();
-    }
-
+    /**
+     * @throws \Throwable
+     */
     public function run()
     {
         if ($this->state !== self::STATE_SHUTDOWN) {
@@ -166,26 +179,33 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
         }
 
         $this->emit('shutdown');
+
+        if ($this->shutdownError) {
+            throw $this->shutdownError;
+        }
     }
 
-    public function shutdown()
+    public function shutdown(\Throwable $withError = null)
     {
+        if ($this->state !== self::STATE_RUNNING) {
+            return;
+        }
+
         $this->connection->disconnect();
+
+        $this->state = self::STATE_SHUTTING;
+        $withError && $this->shutdownError = $withError;
+        if (count($this->cachedMessages) > 0) {
+            return;
+        }
+
         if ($this->countWorkers() === 0) {
             $this->state = self::STATE_SHUTDOWN;
             $this->stopProcess();
             return;
         }
 
-        $this->state = self::STATE_SHUTTING;
-        foreach ($this->workersInfo as $workerID => $each) {
-            try {
-                $this->sendLastMessage($workerID);
-            } catch (\Throwable $e) {
-                // TODO 如果没有成功向所有进程发送关闭,考虑在其他地方需要做重试机制
-                $this->emit('error', ['shuttingDown', $e]);
-            }
-        }
+        $this->informWorkersQuit();
     }
 
     public function onMessage(string $workerID, Message $message)
@@ -199,23 +219,8 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                     if (isset($this->workersInfo[$workerID])) {
                         $this->workersInfo[$workerID]['processed']++;
                     }
-
                     $this->workerScheduler->release($workerID);
-                    if (!$this->limitReached()) {
-                        // 优先派发缓存的消息
-                        if (count($this->cachedMessages) > 0) {
-                            $msg = array_shift($this->cachedMessages);
-                            try {
-                                $this->dispatch($msg);
-                            } catch (\Throwable $e) {
-                                array_unshift($this->cachedMessages, $msg);
-                                $this->emit('error', ['dispatchingMessage', $e]);
-                            }
-                        } else {
-                            $this->connection->resume();
-                        }
-                    }
-
+                    $this->tryDispatchCached();
                     $this->emit('processed', [$workerID]);
                     break;
                 case MessageTypeEnum::STOP_SENDING:
@@ -269,12 +274,13 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
             }
         }
 
-
         try {
             if ($this->limitReached()) {
                 // 无空闲worker且缓存消息已满
                 if (count($this->cachedMessages) >= $this->cacheLimit) {
-                    $this->connection->pause();
+                    $this->connection->pause()->then(null, function ($err) {
+                        $this->shutdown($err);
+                    });
                 }
 
                 // 边沿触发
@@ -321,26 +327,6 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
         }
 
         $this->cacheLimit = $limit;
-    }
-
-    /**
-     * 设置每个worker的消息队列容量.
-     *
-     * 例如: 当这个值为10,一个worker正在处理一条消息,dispatcher可以继续向它发送9条消息等待它处理.
-     * 不建议将这个值设置的.
-     *
-     * @param int $n 必须大于等于1
-     *
-     * @return self
-     */
-    public function setWorkerCapacity(int $n): self
-    {
-        if ($n > 0) {
-            $this->workerCapacity = $n;
-            $this->workerScheduler->changeLevels($n);
-        }
-
-        return $this;
     }
 
     /**
@@ -440,6 +426,27 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
         unset($this->idMap[$pid]);
     }
 
+    private function tryDispatchCached()
+    {
+        if (!$this->limitReached()) {
+            // 优先派发缓存的消息
+            if (count($this->cachedMessages) > 0) {
+                $msg = array_shift($this->cachedMessages);
+                try {
+                    $this->dispatch($msg);
+                } catch (\Throwable $e) {
+                    array_unshift($this->cachedMessages, $msg);
+                    $this->emit('error', ['dispatchingMessage', $e]);
+                }
+            } else {
+                $this->connection->resume()
+                    ->then(null, function ($err) {
+                        $this->shutdown($err);
+                    });
+            }
+        }
+    }
+
     /**
      * 安排一个worker,如果没有空闲worker,创建一个.
      *
@@ -482,5 +489,20 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
             'messageID' => Helper::uuid(),
             'meta' => ['sent' => $this->workersInfo[$workerID]['sent']],
         ])));
+    }
+
+    /**
+     * 通知worker退出.
+     */
+    private function informWorkersQuit()
+    {
+        foreach ($this->workersInfo as $workerID => $each) {
+            try {
+                $this->sendLastMessage($workerID);
+            } catch (\Throwable $e) {
+                // TODO 如果没有成功向所有进程发送关闭,考虑在其他地方需要做重试机制
+                $this->emit('error', ['shuttingDown', $e]);
+            }
+        }
     }
 }
