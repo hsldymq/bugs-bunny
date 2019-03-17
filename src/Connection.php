@@ -2,27 +2,49 @@
 
 namespace Archman\BugsBunny;
 
+use Archman\BugsBunny\Exception\ChannelingFailedException;
+use Archman\BugsBunny\Exception\ConnectFailedException;
+use Archman\BugsBunny\Exception\ConsumerBindingException;
+use Archman\BugsBunny\Exception\NotConnectedException;
+use Archman\BugsBunny\Interfaces\AMQPConnectionInterface;
+use Archman\BugsBunny\Interfaces\ConsumerHandlerInterface;
 use Archman\Whisper\Helper;
 use Bunny\Async\Client;
 use Bunny\Channel;
+use Bunny\Message as AMQPMessage;
+use Evenement\EventEmitter;
 use React\EventLoop\LoopInterface;
+use React\Promise\PromiseInterface;
+use function React\Promise\all;
+use function React\Promise\any;
+use function React\Promise\reject;
+use function React\Promise\resolve;
 
-class Connection implements AMQPConnectionInterface
+class Connection extends EventEmitter implements AMQPConnectionInterface
 {
+    const STATE_DISCONNECTED = 'disconnected';
+    const STATE_CONNECTED = 'connected';
+    const STATE_PAUSING = 'pausing';
+    const STATE_PAUSED = 'paused';
+
     /**
      * @var LoopInterface
      */
     private $eventLoop;
 
     /**
-     * @var callable
+     * @var ConsumerHandlerInterface
      */
     private $handler;
 
     /**
      * @var array
+     * [
+     *      $consumerTag => $queueName,
+     *      ...
+     * ]
      */
-    private $queues;
+    private $queues = [];
 
     /**
      * @var array 连接参数
@@ -37,41 +59,24 @@ class Connection implements AMQPConnectionInterface
     private $connectionOptions;
 
     /**
-     * @var int 建立连接的数量
+     * @var Client
      */
-    private $connectionNum;
+    private $client;
 
     /**
-     * @var array
-     * [
-     *      [
-     *          'client' => $client,
-     *          'channel' => $channel,
-     *          'tags' => [$tag1, $tag2, ...],
-     *      ],
-     *      ...
-     * ]
+     * @var Channel[]
      */
-    private $connections = [];
+    private $channels = [];
 
     /**
-     * @var array
-     * [
-     *      $tag => $queue,
-     *      ...
-     * ]
+     * @var int
      */
-    private $queueMap = [];
+    private $numChannels = 10;
 
     /**
-     * @var bool
+     * @var string
      */
-    private $connected = false;
-
-    /**
-     * @var bool
-     */
-    private $paused = false;
+    private $state = self::STATE_DISCONNECTED;
 
     /**
      * Connection constructor.
@@ -90,8 +95,6 @@ class Connection implements AMQPConnectionInterface
      */
     public function __construct(array $options, array $queues)
     {
-        $this->queues = $queues;
-        $this->connectionNum = max(1, $options['connections'] ?? 1);
         $this->connectionOptions = array_intersect_key($options, [
             'host' => true,
             'port' => true,
@@ -99,37 +102,65 @@ class Connection implements AMQPConnectionInterface
             'user' => true,
             'password' => true,
         ]);
+
+        $queues = array_unique($queues);
+        foreach ($queues as $queueName) {
+            $consumerTag = Helper::uuid();
+            $this->queues[$consumerTag] = $queueName;
+        }
     }
 
-    public function connect(LoopInterface $eventLoop, callable $consumeHandler)
+    /**
+     * @param LoopInterface $eventLoop
+     * @param ConsumerHandlerInterface $handler
+     *
+     * @return PromiseInterface
+     */
+    public function connect(LoopInterface $eventLoop, ConsumerHandlerInterface $handler): PromiseInterface
     {
-        if ($this->connected) {
-            // TODO reconnect
-            return;
+        if ($this->state !== self::STATE_DISCONNECTED) {
+            return resolve();
         }
 
         $this->eventLoop = $eventLoop;
-        $this->handler = $consumeHandler;
-
-        for ($i = 0; $i < $this->connectionNum; $i++) {
-            $this->makeConnection();
-        }
-
-        $this->connected = true;
+        $this->handler = $handler;
+        $client = new Client($this->eventLoop, $this->connectionOptions);
+        return $client->connect()
+            ->then(function (Client $client) {
+                $this->state = self::STATE_CONNECTED;
+                $this->client = $client;
+                return $this->establishChannels();
+            }, function ($reason) {
+                if ($reason instanceof \Throwable) {
+                    return new ConnectFailedException($reason->getMessage(), null, $reason);
+                } else {
+                    return new ConnectFailedException($reason);
+                }
+            })
+            ->then(function () {
+                return $this->bindConsumer($this->channels[0]);
+            });
     }
 
-    public function disconnect()
+    /**
+     * @return PromiseInterface
+     */
+    public function disconnect(): PromiseInterface
     {
-        foreach ($this->connections as $index => $each) {
-            /** @var Client $client */
-            $client = $each['client'];
-            $tags = $each['tags'];
-            $client->disconnect()->done();
-            unset($this->connections[$index]);
-            foreach ($tags as $t) {
-                unset($this->queueMap[$t]);
-            }
+        if ($this->state === self::STATE_DISCONNECTED || !$this->client) {
+            return resolve();
         }
+
+        if (!$this->client->isConnected()) {
+            $this->state = self::STATE_DISCONNECTED;
+            $this->client = null;
+            return resolve();
+        }
+
+        return $this->client->disconnect()->then(function () {
+            $this->state = self::STATE_DISCONNECTED;
+            $this->client = null;
+        });
     }
 
 //
@@ -145,123 +176,113 @@ class Connection implements AMQPConnectionInterface
     /**
      * 暂停消费队列消息.
      */
-    public function pause()
+    public function pause(): PromiseInterface
     {
-        if ($this->paused || !$this->connected) {
-            return;
+        if ($this->state !== self::STATE_CONNECTED) {
+            return resolve();
         }
 
-        foreach ($this->connections as $index => $each) {
-            foreach ($each['tags'] as $tag) {
-                $this->unbindConsumer($each['channel'], $tag);
+        $this->state = self::STATE_PAUSING;
+        /** @var Channel $channel */
+        $channel = $this->channels[0];
+        return $channel->close()->then(function () {
+            array_shift($this->channels);
+            $this->state = self::STATE_PAUSED;
+            $this->emit("resumable");
+        }, function ($reason) {
+            if ($this->client->isConnected()) {
+                $this->state = self::STATE_CONNECTED;
+            } else {
+                $this->state = self::STATE_DISCONNECTED;
             }
-        }
-        $this->paused = true;
+            return $reason;
+        });
     }
 
     /**
      * 恢复消费队列消息.
      */
-    public function resume()
+    public function resume(): PromiseInterface
     {
-        if (!$this->paused || !$this->connected) {
-            return;
+        if (!$this->state === self::STATE_DISCONNECTED) {
+            return reject(new NotConnectedException());
         }
 
-        foreach ($this->connections as $index => $each) {
-            foreach ($each['tags'] as $tag) {
-                $queue = $this->queueMap[$tag];
-                $this->bindConsumer($each['channel'], $tag, $queue, $this->handler);
+        if ($this->state === self::STATE_CONNECTED) {
+            return resolve();
+        }
+
+        $promise = resolve();
+        if (count($this->channels) === 0) {
+            $promise = $this->establishChannels();
+        }
+
+        if ($this->state === self::STATE_PAUSING) {
+            return resolve();
+        }
+
+        return $promise
+            ->then(function () {
+                return $this->bindConsumer($this->channels[0]);
+            })
+            ->then(function () {
+                $this->state = self::STATE_CONNECTED;
+            });
+    }
+
+    public function onConsume(AMQPMessage $msg, Channel $channel, Client $client)
+    {
+        $tag = $msg->consumerTag;
+        $queue = $this->queues[$tag];
+
+        $result = $this->handler->onConsume($msg, $queue, $channel, $client);
+        if ($result) {
+            $channel->ack($msg)->then();
+        }
+    }
+
+    /**
+     * @return PromiseInterface
+     */
+    private function establishChannels(): PromiseInterface
+    {
+        $promises = [];
+        for ($i = 0; $i < $this->numChannels; $i++) {
+            $promises[] = $this->client->channel()->then(function (Channel $channel) {
+                $this->channels[] = $channel;
+            });
+        }
+
+        return any($promises)->then(null, function ($reason) {
+            if ($reason instanceof \Throwable) {
+                return reject(new ChannelingFailedException($reason->getMessage(), null, $reason));
+            } else {
+                return reject(new ChannelingFailedException($reason));
             }
-        }
-        $this->paused = false;
+        });
     }
 
     /**
-     * @return bool
-     */
-    public function isConnected(): bool
-    {
-        return $this->connected;
-    }
-
-    /**
-     * @return bool
-     */
-    public function isPaused(): bool
-    {
-        return $this->paused;
-    }
-
-    /**
-     * @param string$tag
+     * @param Channel $channel
      *
-     * @return string|null
+     * @return PromiseInterface
      */
-    public function getQueue(string $tag)
+    private function bindConsumer(Channel $channel): PromiseInterface
     {
-        return $this->queueMap[$tag] ?? null;
-    }
+        if (!$this->queues) {
+            return resolve();
+        }
+        $promises = [];
+        foreach ($this->queues as $tag => $queue) {
+            $promises[] = $channel->consume([$this, 'onConsume'], $queue, $tag);
+        }
 
-    private function makeConnection()
-    {
-        $onReject = function ($reason) {
-            $msg = "Failed to connect AMQP server.";
-
-            if (is_string($reason)) {
-                $msg .= $reason;
-            } else if ($reason instanceof \Throwable) {
-                $prev = $reason;
-                $msg .= $reason->getMessage();
+        return all($promises)->then(null, function ($reason) {
+            if ($reason instanceof \Throwable) {
+                return reject(new ConsumerBindingException($reason->getMessage(), null, $reason));
+            } else {
+                return reject(new ConsumerBindingException($reason));
             }
-
-            throw new \Exception($msg, 0, $prev ?? null);
-        };
-
-        $client = new Client($this->eventLoop, $this->connectionOptions);
-        $client->connect()
-            ->then(function (Client $client) {
-                return $client->channel();
-            }, $onReject)
-            ->then(function (Channel $channel) use ($onReject) {
-                return $channel->qos(0, 1)->then(function () use ($channel) {
-                    return $channel;
-                }, $onReject);
-            }, $onReject)
-            ->then(function (Channel $channel) use ($client) {
-                $map = [];
-                foreach ($this->queues as $queue) {
-                    $tag = Helper::uuid();
-                    $this->bindConsumer($channel, $tag, $queue, $this->handler);
-                    $map[$tag] = $queue;
-                }
-                $this->connections[] = [
-                    'client' => $client,
-                    'channel' => $channel,
-                    'tags' => array_keys($map),
-                ];
-                $this->queueMap = array_merge($this->queueMap, $map);
-            }, $onReject)
-            ->done(function () {}, $onReject);
-    }
-
-    /**
-     * @param Channel $channel
-     * @param string $tag
-     * @param string $queue
-     * @param callable $handler
-     */
-    private function bindConsumer(Channel $channel, string $tag, string $queue, callable $handler)
-    {
-        $channel->consume($handler, $queue, $tag)->done();
-    }
-
-    /**
-     * @param Channel $channel
-     * @param string $tag
-     */
-    private function unbindConsumer(Channel $channel, string $tag)
-    {
-        $channel->cancel($tag)->done();
+        });
     }
 }
