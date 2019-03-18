@@ -74,6 +74,11 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
     private $numChannels = 10;
 
     /**
+     * @var int channel qos的预取消息数
+     */
+    private $numPrefetch = 1;
+
+    /**
      * @var string
      */
     private $state = self::STATE_DISCONNECTED;
@@ -223,6 +228,18 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
             });
     }
 
+    /**
+     * 请在初始化阶段设置,否则不能即时生效.
+     *
+     * @param int $num
+     */
+    public function setPrefetch(int $num)
+    {
+        if ($num > 0) {
+            $this->numChannels = $num;
+        }
+    }
+
     private function makeConsumer(string $queue)
     {
         return function (AMQPMessage $msg, Channel $channel, Client $client) use ($queue) {
@@ -242,7 +259,7 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
         for ($i = 0; $i < $this->numChannels; $i++) {
             $promises[] = $this->client->channel()
                 ->then(function (Channel $channel) {
-                    return $channel->qos(0, 1)->then(function () use ($channel) {
+                    return $channel->qos(0, $this->numPrefetch)->then(function () use ($channel) {
                         return $channel;
                     });
                 })
