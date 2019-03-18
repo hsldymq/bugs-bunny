@@ -40,7 +40,7 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
     /**
      * @var array
      * [
-     *      $consumerTag => $queueName,
+     *      $queueName,
      *      ...
      * ]
      */
@@ -87,9 +87,6 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
      *      'vhost' => 'yyy',
      *      'user' => 'zzz',
      *      'password' => 'uuu',
-     *      'connections' => 1,                 // =1, 同时创建多少个连接. [可选]默认为1
-     *      // 'reconnectOnError' => false / true, // [可选]默认为true
-     *      // 'maxReconnectRetries => 1,          // >=1, 重连尝试次数,超过将抛出异常. [可选] 默认为3
      * ]
      * @param array $queues 队列名称列表
      */
@@ -103,11 +100,7 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
             'password' => true,
         ]);
 
-        $queues = array_unique($queues);
-        foreach ($queues as $queueName) {
-            $consumerTag = Helper::uuid();
-            $this->queues[$consumerTag] = $queueName;
-        }
+        $this->queues = array_unique($queues);
     }
 
     /**
@@ -230,15 +223,14 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
             });
     }
 
-    public function onConsume(AMQPMessage $msg, Channel $channel, Client $client)
+    private function makeConsumer(string $queue)
     {
-        $tag = $msg->consumerTag;
-        $queue = $this->queues[$tag];
-
-        $result = $this->handler->onConsume($msg, $queue, $channel, $client);
-        if ($result) {
-            $channel->ack($msg)->then();
-        }
+        return function (AMQPMessage $msg, Channel $channel, Client $client) use ($queue) {
+            $result = $this->handler->onConsume($msg, $queue, $channel, $client);
+            if ($result) {
+                $channel->ack($msg)->then();
+            }
+        };
     }
 
     /**
@@ -248,9 +240,15 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
     {
         $promises = [];
         for ($i = 0; $i < $this->numChannels; $i++) {
-            $promises[] = $this->client->channel()->then(function (Channel $channel) {
-                $this->channels[] = $channel;
-            });
+            $promises[] = $this->client->channel()
+                ->then(function (Channel $channel) {
+                    return $channel->qos(0, 1)->then(function () use ($channel) {
+                        return $channel;
+                    });
+                })
+                ->then(function (Channel $channel) {
+                    $this->channels[] = $channel;
+                });
         }
 
         return any($promises)->then(null, function ($reason) {
@@ -273,8 +271,8 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
             return resolve();
         }
         $promises = [];
-        foreach ($this->queues as $tag => $queue) {
-            $promises[] = $channel->consume([$this, 'onConsume'], $queue, $tag);
+        foreach ($this->queues as $queue) {
+            $promises[] = $channel->consume($this->makeConsumer($queue), $queue);
         }
 
         return all($promises)->then(null, function ($reason) {
