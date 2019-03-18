@@ -13,5 +13,5 @@ interface ConsumerHandlerInterface
         string $queue,
         Channel $channel,
         Client $client
-    ): bool;
+    );
 }
