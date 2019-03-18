@@ -2,21 +2,20 @@
 
 namespace Archman\BugsBunny;
 
-use Archman\BugsBunny\Exception\ChannelingFailedException;
 use Archman\BugsBunny\Exception\ConnectFailedException;
 use Archman\BugsBunny\Exception\ConsumerBindingException;
 use Archman\BugsBunny\Exception\NotConnectedException;
 use Archman\BugsBunny\Interfaces\AMQPConnectionInterface;
 use Archman\BugsBunny\Interfaces\ConsumerHandlerInterface;
-use Archman\Whisper\Helper;
 use Bunny\Async\Client;
 use Bunny\Channel;
 use Bunny\Message as AMQPMessage;
+use Bunny\Protocol\MethodBasicCancelOkFrame;
+use Bunny\Protocol\MethodBasicConsumeOkFrame;
 use Evenement\EventEmitter;
 use React\EventLoop\LoopInterface;
 use React\Promise\PromiseInterface;
 use function React\Promise\all;
-use function React\Promise\any;
 use function React\Promise\reject;
 use function React\Promise\resolve;
 
@@ -40,11 +39,20 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
     /**
      * @var array
      * [
-     *      $queueName,
+     *      $queueName => $consumerHandler,
      *      ...
      * ]
      */
     private $queues = [];
+
+    /**
+     * @var array
+     * [
+     *      $tag,
+     *      ...
+     * ]
+     */
+    private $consumerTags = [];
 
     /**
      * @var array 连接参数
@@ -64,14 +72,9 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
     private $client;
 
     /**
-     * @var Channel[]
+     * @var Channel
      */
-    private $channels = [];
-
-    /**
-     * @var int
-     */
-    private $numChannels = 10;
+    private $channel;
 
     /**
      * @var int channel qos的预取消息数
@@ -105,7 +108,13 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
             'password' => true,
         ]);
 
-        $this->queues = array_unique($queues);
+        foreach (array_unique($queues) as $queueName) {
+            $this->queues[$queueName] = (function (string $queueName) {
+                return function (AMQPMessage $msg, Channel $channel, Client $client) use ($queueName) {
+                    $this->handler->onConsume($msg, $queueName, $channel, $client);
+                };
+            })($queueName);
+        }
     }
 
     /**
@@ -127,7 +136,7 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
             ->then(function (Client $client) {
                 $this->state = self::STATE_CONNECTED;
                 $this->client = $client;
-                return $this->establishChannels();
+                return $this->client->channel();
             }, function ($reason) {
                 if ($reason instanceof \Throwable) {
                     return new ConnectFailedException($reason->getMessage(), null, $reason);
@@ -135,8 +144,14 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
                     return new ConnectFailedException($reason);
                 }
             })
-            ->then(function () {
-                return $this->bindConsumer($this->channels[0]);
+            ->then(function (Channel $channel) {
+                return $channel->qos(0, $this->numPrefetch)->then(function () use ($channel) {
+                    return $channel;
+                });
+            })
+            ->then(function (Channel $channel) {
+                $this->channel = $channel;
+                return $this->bindConsumer($this->channel);
             });
     }
 
@@ -181,20 +196,19 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
         }
 
         $this->state = self::STATE_PAUSING;
-        /** @var Channel $channel */
-        $channel = $this->channels[0];
-        return $channel->close()->then(function () {
-            array_shift($this->channels);
-            $this->state = self::STATE_PAUSED;
-            $this->emit("resumable");
-        }, function ($reason) {
-            if ($this->client->isConnected()) {
-                $this->state = self::STATE_CONNECTED;
-            } else {
-                $this->state = self::STATE_DISCONNECTED;
-            }
-            return $reason;
-        });
+
+        return $this->unbindConsumer($this->channel)
+            ->then(function () {
+                $this->state = self::STATE_PAUSED;
+                $this->emit("resumable");
+            }, function ($reason) {
+                if ($this->client->isConnected()) {
+                    $this->state = self::STATE_CONNECTED;
+                } else {
+                    $this->state = self::STATE_DISCONNECTED;
+                }
+                return $reason;
+            });
     }
 
     /**
@@ -206,23 +220,13 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
             return reject(new NotConnectedException());
         }
 
-        if ($this->state === self::STATE_CONNECTED) {
+        if ($this->state === self::STATE_CONNECTED ||
+            $this->state === self::STATE_PAUSING
+        ) {
             return resolve();
         }
 
-        $promise = resolve();
-        if (count($this->channels) === 0) {
-            $promise = $this->establishChannels();
-        }
-
-        if ($this->state === self::STATE_PAUSING) {
-            return resolve();
-        }
-
-        return $promise
-            ->then(function () {
-                return $this->bindConsumer($this->channels[0]);
-            })
+        return $this->bindConsumer($this->channel)
             ->then(function () {
                 $this->state = self::STATE_CONNECTED;
             });
@@ -236,42 +240,8 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
     public function setPrefetch(int $num)
     {
         if ($num > 0) {
-            $this->numChannels = $num;
+            $this->numPrefetch = $num;
         }
-    }
-
-    private function makeConsumer(string $queue)
-    {
-        return function (AMQPMessage $msg, Channel $channel, Client $client) use ($queue) {
-            $this->handler->onConsume($msg, $queue, $channel, $client);
-        };
-    }
-
-    /**
-     * @return PromiseInterface
-     */
-    private function establishChannels(): PromiseInterface
-    {
-        $promises = [];
-        for ($i = 0; $i < $this->numChannels; $i++) {
-            $promises[] = $this->client->channel()
-                ->then(function (Channel $channel) {
-                    return $channel->qos(0, $this->numPrefetch)->then(function () use ($channel) {
-                        return $channel;
-                    });
-                })
-                ->then(function (Channel $channel) {
-                    $this->channels[] = $channel;
-                });
-        }
-
-        return any($promises)->then(null, function ($reason) {
-            if ($reason instanceof \Throwable) {
-                return reject(new ChannelingFailedException($reason->getMessage(), null, $reason));
-            } else {
-                return reject(new ChannelingFailedException($reason));
-            }
-        });
     }
 
     /**
@@ -284,9 +254,36 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
         if (!$this->queues) {
             return resolve();
         }
+
         $promises = [];
-        foreach ($this->queues as $queue) {
-            $promises[] = $channel->consume($this->makeConsumer($queue), $queue);
+        foreach ($this->queues as $queue => $handler) {
+            $promises[] = $channel->consume($handler, $queue)
+                ->then(function (MethodBasicConsumeOkFrame $frame) {
+                    $this->consumerTags[] = $frame->consumerTag;
+                });
+        }
+
+        return all($promises)->then(null, function ($reason) {
+            if ($reason instanceof \Throwable) {
+                return reject(new ConsumerBindingException($reason->getMessage(), null, $reason));
+            } else {
+                return reject(new ConsumerBindingException($reason));
+            }
+        });
+    }
+
+    private function unbindConsumer(Channel $channel)
+    {
+        if (!$this->consumerTags) {
+            return resolve();
+        }
+
+        $promises = [];
+        foreach ($this->consumerTags as $tag => $_) {
+            $promises[] = $channel->cancel($tag)
+                ->then(function (MethodBasicCancelOkFrame $frame) {
+                    unset($this->consumerTags[$frame->consumerTag]);
+                });
         }
 
         return all($promises)->then(null, function ($reason) {

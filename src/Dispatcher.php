@@ -247,7 +247,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
         string $queue,
         Channel $channel,
         Client $client
-    ): bool {
+    ) {
         $reachedBefore = $this->limitReached();
         $message = [
             'messageID' => Helper::uuid(),
@@ -270,27 +270,16 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                 $this->dispatch($message);
             } catch (\Throwable $e) {
                 $this->emit('error', ['dispatchingMessage', $e]);
-                return false;
+                return;
             }
         }
 
-        try {
-            $channel->ack($AMQPMessage)->then();
-            if ($this->limitReached()) {
-                // 无空闲worker且缓存消息已满
-                if (count($this->cachedMessages) >= $this->cacheLimit) {
-                    $this->connection->pause()->then(null, function ($err) {
-                        $this->shutdown($err);
-                    });
-                }
-
-                // 边沿触发
-                if (!$reachedBefore) {
-                    $this->emit('limitReached');
-                }
+        $promise = $channel->ack($AMQPMessage);
+        if ($this->limitReached()) {
+            $promise->always([$this, 'checkCachedLimitAndPause']);
+            if (!$reachedBefore) {
+                $this->emit('limitReached');
             }
-        } finally {
-            return true;
         }
     }
 
@@ -504,6 +493,22 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                 // TODO 如果没有成功向所有进程发送关闭,考虑在其他地方需要做重试机制
                 $this->emit('error', ['shuttingDown', $e]);
             }
+        }
+    }
+
+    /**
+     * 无空闲worker且缓存消息已满,就应该停止消费,优先消费缓存中的消息.
+     */
+    public function checkCachedLimitAndPause()
+    {
+        if ($this->state === self::STATE_SHUTDOWN) {
+            return;
+        }
+
+        if (count($this->cachedMessages) >= $this->cacheLimit) {
+            $this->connection->pause()->then(null, function ($err) {
+                $this->shutdown($err);
+            });
         }
     }
 }
