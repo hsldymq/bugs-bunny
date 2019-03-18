@@ -243,10 +243,7 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
     private function makeConsumer(string $queue)
     {
         return function (AMQPMessage $msg, Channel $channel, Client $client) use ($queue) {
-            $result = $this->handler->onConsume($msg, $queue, $channel, $client);
-            if ($result) {
-                $channel->ack($msg)->then();
-            }
+            $this->handler->onConsume($msg, $queue, $channel, $client);
         };
     }
 

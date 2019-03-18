@@ -99,7 +99,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
     /**
      * @var int 限制了缓存消息的数量,如果到达或超过此值时会停止从AMQP消费消息,直到缓存的消息都派发完为止
      */
-    private $cacheLimit = 100;
+    private $cacheLimit = 0;
 
     /**
      * @var int 僵尸进程检查周期(秒)
@@ -133,7 +133,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
         //      如果一个worker队列满了,但是它处理当前消息很慢
         //      那么队列中的消息就会一直等待,但它们其实可以调度给其他已经空闲了的worker在处理
         // 基于以上,这里传参恒为1
-        $this->workerScheduler = new WorkerScheduler(100);
+        $this->workerScheduler = new WorkerScheduler(1);
         $this->workerFactory = $factory;
 
         $this->on('__workerExit', function (string $workerID, int $pid) {
@@ -275,6 +275,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
         }
 
         try {
+            $channel->ack($AMQPMessage)->then();
             if ($this->limitReached()) {
                 // 无空闲worker且缓存消息已满
                 if (count($this->cachedMessages) >= $this->cacheLimit) {
