@@ -28,12 +28,12 @@ $conn = new Connection([
 
 $dispatcher = new Dispatcher($conn, $factory);
 
-$dispatcher->on('processed', function (string $workerID, Dispatcher $master) {
-    $stat = $master->getStat();
+$dispatcher->on('processed', function (string $workerID, Dispatcher $dispatcher) {
+    $stat = $dispatcher->getStat();
     $process = $stat['processed'];
     $consumed = $stat['consumed'];
 
-    echo "{$process}/{$consumed} Master - Worker {$workerID} Has Processed The Message, Workers:{$master->countWorkers()}.\n";
+    echo "{$process}/{$consumed} Worker {$workerID} Has Processed The Message, Workers:{$dispatcher->countWorkers()}.\n";
 });
 
 $dispatcher->on('workerExit', function (string $workerID, int $pid, Dispatcher $dispatcher) {
@@ -42,7 +42,7 @@ $dispatcher->on('workerExit', function (string $workerID, int $pid, Dispatcher $
 });
 
 $dispatcher->on('error', function (string $reason, \Throwable $e, Dispatcher $dispatcher) {
-    echo "Master Error, Reason: {$reason}, Message: {$e->getMessage()}\n";
+    echo "Dispatcher Error, Reason: {$reason}, Message: {$e->getMessage()}\n";
     $dispatcher->shutdown();
 });
 

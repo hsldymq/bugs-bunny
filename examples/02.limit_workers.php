@@ -32,12 +32,12 @@ $dispatcher->setMaxWorkers(50);
 // 设置缓存的消息数量,当worker创建满后,会预先消费一些消息放到缓存中,待有worker空闲时,按照FIFO优先派发缓存的消息
 $dispatcher->setCacheLimit(1000);
 
-$dispatcher->on('processed', function (string $workerID, Dispatcher $master) {
-    $stat = $master->getStat();
+$dispatcher->on('processed', function (string $workerID, Dispatcher $dispatcher) {
+    $stat = $dispatcher->getStat();
     $process = $stat['processed'];
     $consumed = $stat['consumed'];
 
-    echo "{$process}/{$consumed} Master - Worker {$workerID} Has Processed The Message, Workers:{$master->countWorkers()}, Schedulable:{$master->countSchedulable()}.\n";
+    echo "{$process}/{$consumed} - Worker {$workerID} Has Processed The Message, Workers:{$dispatcher->countWorkers()}, Schedulable:{$dispatcher->countSchedulable()}.\n";
 });
 
 $dispatcher->on('workerExit', function (string $workerID, int $pid, Dispatcher $dispatcher) {
@@ -46,7 +46,7 @@ $dispatcher->on('workerExit', function (string $workerID, int $pid, Dispatcher $
 });
 
 $dispatcher->on('error', function (string $reason, \Throwable $e, Dispatcher $dispatcher) {
-    echo "Master Error, Reason: {$reason}, Message: {$e->getMessage()}\n";
+    echo "Dispatcher Error, Reason: {$reason}, Message: {$e->getMessage()}\n";
     $dispatcher->shutdown();
 });
 
