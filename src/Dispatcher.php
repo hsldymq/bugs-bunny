@@ -11,6 +11,7 @@ use Archman\Whisper\Message;
 use Bunny\Async\Client;
 use Bunny\Channel;
 use Bunny\Message as AMQPMessage;
+use React\Promise\Promise;
 
 /**
  * @event message       参数: string $workerID, \Archman\Whisper\Message $msg
@@ -128,13 +129,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                 $this->shutdown($reason);
             });
 
-        // 不在需要为每个worker设置一个的缓冲队列了
-        // 因为有了全局缓冲
-        // 对每个worker设置一个缓冲队列有一个问题
-        //      如果一个worker队列满了,但是它处理当前消息很慢
-        //      那么队列中的消息就会一直等待,但它们其实可以调度给其他已经空闲了的worker在处理
-        // 基于以上,这里传参恒为1
-        $this->workerScheduler = new WorkerScheduler(1);
+        $this->workerScheduler = new WorkerScheduler();
         $this->workerFactory = $factory;
 
         $this->on('__workerExit', function (string $workerID, int $pid) {
@@ -147,10 +142,6 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                     $this->stopProcess();
                 }
             }
-        });
-
-        $this->connection->on('resumable', function () {
-            $this->tryDispatchCached();
         });
     }
 
@@ -285,6 +276,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
             }
         }
 
+        /** @var Promise $promise */
         $promise = $channel->ack($AMQPMessage);
         if ($this->limitReached()) {
             $promise->always([$this, 'checkCachedLimitAndPause']);
@@ -440,8 +432,8 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                 }
             } else {
                 $this->connection->resume()
-                    ->then(null, function ($err) {
-                        $this->shutdown($err);
+                    ->then(null, function (\Throwable $error) {
+                        $this->shutdown($error);
                     });
             }
         }
@@ -500,7 +492,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
             try {
                 $this->sendLastMessage($workerID);
             } catch (\Throwable $e) {
-                // TODO 如果没有成功向所有进程发送关闭,考虑在其他地方需要做重试机制
+                // TODO 如果没有成功向所有进程发送关闭,考虑是否需要做重试机制
                 $this->emit('error', ['shuttingDown', $e]);
             }
         }
@@ -516,8 +508,8 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
         }
 
         if (count($this->cachedMessages) >= $this->cacheLimit) {
-            $this->connection->pause()->then(null, function ($err) {
-                $this->shutdown($err);
+            $this->connection->pause()->then(null, function (\Throwable $error) {
+                $this->shutdown($error);
             });
         }
     }

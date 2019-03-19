@@ -18,13 +18,14 @@ class WorkerScheduler
 
     /**
      * @var array
-     * Dispatcher允许一个worker有一个队列同时发送多个消息给它,为了实现按照闲置情况来调度worker
-     * 这里的数组结构包含worker队列上限+1个元素,每一个数组元素代表一个闲置等级.
-     * 最高下标中代表最空闲,没有被调度的worker
-     * 次高代表被调度出一次,一次类推
      * 下标0中为忙碌中或者已退休的worker.
+     * 下标1中为空闲的worker.
      * [
-     *      [
+     *      0 => [
+     *          $workerID => (integer),     // self::WORKING 允许调度, self::RETIRED 退休,停止调度
+     *          ...
+     *      ],
+     *      1 => [
      *          $workerID => (integer),     // self::WORKING 允许调度, self::RETIRED 退休,停止调度
      *          ...
      *      ],
@@ -57,12 +58,9 @@ class WorkerScheduler
      */
     private $busyNum = 0;
 
-    /**
-     * @param int $levels must be great then 0
-     */
-    public function __construct(int $levels)
+    public function __construct()
     {
-        $this->changeLevels($levels);
+        $this->changeLevels(1);
     }
 
     /**
@@ -206,55 +204,6 @@ class WorkerScheduler
     }
 
     /**
-     * 变更调度等级数.
-     *
-     * 调整后的等级数大于或小于原等级数,那么存在两种情况
-     * 新的等级数更大时,原来处于忙碌的worker就不再处于忙碌状态,于是可以进行调度
-     * 更小时,原来不忙碌的worker可能就会处于忙碌状态,可以调度的worker就变少了.
-     *
-     * @param int $newLevelNum
-     */
-    public function changeLevels(int $newLevelNum)
-    {
-        $oldLevelNum = count($this->scheduleLevels);
-        if ($oldLevelNum === $newLevelNum + 1 || $newLevelNum <= 0) {
-            return;
-        }
-
-        $newScheduleLevels = array_fill(0, $newLevelNum + 1, []);
-        if ($oldLevelNum === 0) {
-            $this->scheduleLevels = $newScheduleLevels;
-            return;
-        }
-
-        $diff = $newLevelNum + 1 - $oldLevelNum;
-        foreach ($this->scheduleLevels as $level => $workers) {
-            foreach ($workers as $workerID => $state) {
-                if ($state === self::RETIRED) {
-                    $newScheduleLevels[0][$workerID] = $state;
-                    $this->levelMap[$workerID] = 0;
-                } else {
-                    if ($diff > 0) {
-                        $newLevel = min($level + $diff, $newLevelNum);
-                    } else {
-                        // $diff < 0
-                        $newLevel = max(0, $level + $diff);
-                    }
-                    $newScheduleLevels[$newLevel][$workerID] = $state;
-                    $this->levelMap[$workerID] = $newLevel;
-
-                    if ($level > 0 && $newLevel === 0) {
-                        $this->increase('busy');
-                    } else if ($level === 0 && $newLevel > 0) {
-                        $this->decrease('busy');
-                    }
-                }
-            }
-        }
-        $this->scheduleLevels = $newScheduleLevels;
-    }
-
-    /**
      * 返回剩余可调度的worker.
      *
      * @return int
@@ -316,5 +265,54 @@ class WorkerScheduler
                 $this->retiredNum--;
                 break;
         }
+    }
+
+    /**
+     * 变更调度等级数.
+     *
+     * 调整后的等级数大于或小于原等级数,那么存在两种情况
+     * 新的等级数更大时,原来处于忙碌的worker就不再处于忙碌状态,于是可以进行调度
+     * 更小时,原来不忙碌的worker可能就会处于忙碌状态,可以调度的worker就变少了.
+     *
+     * @param int $newLevelNum
+     */
+    private function changeLevels(int $newLevelNum)
+    {
+        $oldLevelNum = count($this->scheduleLevels);
+        if ($oldLevelNum === $newLevelNum + 1 || $newLevelNum <= 0) {
+            return;
+        }
+
+        $newScheduleLevels = array_fill(0, $newLevelNum + 1, []);
+        if ($oldLevelNum === 0) {
+            $this->scheduleLevels = $newScheduleLevels;
+            return;
+        }
+
+        $diff = $newLevelNum + 1 - $oldLevelNum;
+        foreach ($this->scheduleLevels as $level => $workers) {
+            foreach ($workers as $workerID => $state) {
+                if ($state === self::RETIRED) {
+                    $newScheduleLevels[0][$workerID] = $state;
+                    $this->levelMap[$workerID] = 0;
+                } else {
+                    if ($diff > 0) {
+                        $newLevel = min($level + $diff, $newLevelNum);
+                    } else {
+                        // $diff < 0
+                        $newLevel = max(0, $level + $diff);
+                    }
+                    $newScheduleLevels[$newLevel][$workerID] = $state;
+                    $this->levelMap[$workerID] = $newLevel;
+
+                    if ($level > 0 && $newLevel === 0) {
+                        $this->increase('busy');
+                    } else if ($level === 0 && $newLevel > 0) {
+                        $this->decrease('busy');
+                    }
+                }
+            }
+        }
+        $this->scheduleLevels = $newScheduleLevels;
     }
 }
