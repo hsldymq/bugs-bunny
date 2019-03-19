@@ -222,12 +222,17 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
             switch ($type) {
                 case MessageTypeEnum::PROCESSED:
                     $this->stat['processed']++;
+                    $this->workerScheduler->release($workerID);
                     if (isset($this->workersInfo[$workerID])) {
                         $this->workersInfo[$workerID]['processed']++;
                     }
-                    $this->workerScheduler->release($workerID);
-                    $this->tryDispatchCached();
-                    $this->emit('processed', [$workerID]);
+
+                    try {
+                        $this->emit('processed', [$workerID]);
+                    } finally {
+                        $this->tryDispatchCached();
+                    }
+
                     break;
                 case MessageTypeEnum::STOP_SENDING:
                     $this->workerScheduler->retire($workerID);
