@@ -57,7 +57,7 @@ class Worker extends AbstractWorker
     {
         parent::__construct($id, $socketFD);
 
-        $this->emit('workerCreated', [$id]);
+        $this->errorlessEmit('workerCreated', [$id]);
         $this->trySetShutdownTimer();
     }
 
@@ -70,7 +70,7 @@ class Worker extends AbstractWorker
 
         $contentArray = json_decode($cnt, true);
         if (json_last_error() !== JSON_ERROR_NONE) {
-            $this->emit('error', [
+            $this->errorlessEmit('error', [
                 'decodingMessage',
                 new \Exception(sprintf("Error:%s, Content:%s", json_last_error_msg(), $cnt))
             ]);
@@ -95,7 +95,7 @@ class Worker extends AbstractWorker
                     $queueMsg = new QueueMessage($info);
                     call_user_func($this->messageHandler, $queueMsg, $this);
                 } catch (\Throwable $e) {
-                    $this->emit('error', ['processingMessage', $cnt]);
+                    $this->errorlessEmit('error', ['processingMessage', $cnt]);
                 }
 
                 end:
@@ -109,7 +109,7 @@ class Worker extends AbstractWorker
                 $this->noMore = true;
                 break;
             default:
-                $this->emit('message', [$msg]);
+                $this->errorlessEmit('message', [$msg]);
         }
 
         $this->trySetShutdownTimer();
@@ -179,5 +179,12 @@ class Worker extends AbstractWorker
             $this->removeTimer($this->shutdownTimer);
             $this->shutdownTimer = null;
         }
+    }
+
+    private function errorlessEmit(string $event, array $args = [])
+    {
+        try {
+            $this->emit($event, $args);
+        } finally {}
     }
 }
