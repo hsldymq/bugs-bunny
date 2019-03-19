@@ -10,7 +10,7 @@ use Archman\BugsBunny\Connection;
 
 $factory = new WorkerFactory();
 $factory->setMessageHandler(function (QueueMessage $message, Worker $worker) {
-    // 一次处理200ms,这会造成消息量很多时,Dispatcher大量fork出worker进行处理
+    // 一次处理200ms,在消息量很多时,这会造成Dispatcher大量fork出worker进行处理
     usleep(200000);
 });
 $factory->registerEvent('error', function (string $reason, \Throwable $e, Worker $worker) {
@@ -29,6 +29,8 @@ $dispatcher = new Dispatcher($conn, $factory);
 
 // 这里将worker限制在一定量,这会降低消费速度,但是不会因为fork将系统资源耗完
 $dispatcher->setMaxWorkers(50);
+// 设置缓存的消息数量,当worker创建满后,会预先消费一些消息放到缓存中,待有worker空闲时,按照FIFO优先派发缓存的消息
+$dispatcher->setCacheLimit(1000);
 
 $dispatcher->on('processed', function (string $workerID, Dispatcher $master) {
     $stat = $master->getStat();
