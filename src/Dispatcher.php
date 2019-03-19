@@ -92,9 +92,9 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
     ];
 
     /**
-     * @var array 当限制了worker数量并且worker跑满,进来的消息缓存起来,待有空闲的时候再派发
+     * @var \SplDoublyLinkedList 当限制了worker数量并且worker跑满,进来的消息缓存起来,待有空闲的时候再派发
      */
-    private $cachedMessages = [];
+    private $cachedMessages;
 
     /**
      * @var int 限制了缓存消息的数量,如果到达或超过此值时会停止从AMQP消费消息,直到缓存的消息都派发完为止
@@ -120,6 +120,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
     {
         parent::__construct();
 
+        $this->cachedMessages = new \SplDoublyLinkedList();
         $this->connection = $connection;
         $this->connection
             ->connect($this->getEventLoop(), $this)
@@ -264,7 +265,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
         ];
 
         if ($reachedBefore) {
-            $this->cachedMessages[] = $message;
+            $this->cachedMessages->push($message);
         } else {
             try {
                 $this->dispatch($message);
@@ -421,11 +422,10 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
         if (!$this->limitReached()) {
             // 优先派发缓存的消息
             if (count($this->cachedMessages) > 0) {
-                $msg = array_shift($this->cachedMessages);
                 try {
-                    $this->dispatch($msg);
+                    $this->dispatch($this->cachedMessages->offsetGet(0));
+                    $this->cachedMessages->shift();
                 } catch (\Throwable $e) {
-                    array_unshift($this->cachedMessages, $msg);
                     $this->emit('error', ['dispatchingMessage', $e]);
                 }
             } else {
