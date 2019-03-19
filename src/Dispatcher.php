@@ -289,7 +289,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
     /**
      * 设置进程数量上限.
      *
-     * @param int $num >0时为上限值, =-1时为不限数量, 0或者<-1时不做任何操作.
+     * @param int $num > 0时为上限值, =-1时为不限数量, 0或者<-1时不做任何操作.
      *
      * @return self
      */
@@ -309,7 +309,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
      * 待有空闲worker时优先从缓存中取出小心进行派发
      * 这个方法限制了缓存的大小,当缓存到达上限后,会暂停从amqp server中消费消息
      * 直到清空了缓存为止
-     * 建议不要设置太大,因为可能会大量消耗master进程的内存资源,不利于进程的稳定常驻运行.
+     * 建议在内存允许的情况下可以适当设大一些.
      *
      * @param int $limit >= 0
      */
