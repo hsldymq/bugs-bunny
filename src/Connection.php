@@ -272,7 +272,7 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
         });
     }
 
-    private function unbindConsumer(Channel $channel)
+    private function unbindConsumer(Channel $channel): PromiseInterface
     {
         if (!$this->consumerTags) {
             return resolve();
