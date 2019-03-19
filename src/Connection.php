@@ -12,14 +12,13 @@ use Archman\BugsBunny\Interfaces\ConsumerHandlerInterface;
 use Bunny\Async\Client;
 use Bunny\Channel;
 use Bunny\Message as AMQPMessage;
-use Evenement\EventEmitter;
 use React\EventLoop\LoopInterface;
 use React\Promise\PromiseInterface;
 use function React\Promise\all;
 use function React\Promise\reject;
 use function React\Promise\resolve;
 
-class Connection extends EventEmitter implements AMQPConnectionInterface
+class Connection implements AMQPConnectionInterface
 {
     const STATE_DISCONNECTED = 'disconnected';
     const STATE_CONNECTED = 'connected';

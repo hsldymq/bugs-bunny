@@ -6,7 +6,7 @@ use Evenement\EventEmitterInterface;
 use React\EventLoop\LoopInterface;
 use React\Promise\PromiseInterface;
 
-interface AMQPConnectionInterface extends EventEmitterInterface
+interface AMQPConnectionInterface
 {
     public function connect(LoopInterface $eventLoop, ConsumerHandlerInterface $handler): PromiseInterface;
 
