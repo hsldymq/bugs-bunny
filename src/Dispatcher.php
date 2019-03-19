@@ -168,7 +168,12 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
         $this->state = self::STATE_RUNNING;
 
         while ($this->state !== self::STATE_SHUTDOWN) {
-            $this->process($this->patrolPeriod);
+            try {
+                $this->process($this->patrolPeriod);
+            } catch (\Throwable $e) {
+                $this->shutdown($e);
+            }
+
             // 补杀僵尸进程
             for ($i = 0, $len = count($this->idMap); $i < $len; $i++) {
                 $pid = pcntl_wait($status, WNOHANG);
