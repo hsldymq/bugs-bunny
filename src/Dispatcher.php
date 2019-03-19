@@ -22,7 +22,6 @@ use React\Promise\Promise;
  *                      $reason enum:
  *                          'shuttingDown'
  *                          'sendingMessage'
- *                          'handlingMessage'
  *                          'dispatchingMessage',
  *                          'creatingWorker'
  */
@@ -121,26 +120,23 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
     {
         parent::__construct();
 
-        $this->cachedMessages = new \SplDoublyLinkedList();
         $this->connection = $connection;
+        $this->workerFactory = $factory;
+        $this->cachedMessages = new \SplDoublyLinkedList();
+        $this->workerScheduler = new WorkerScheduler();
+
         $this->connection
             ->connect($this->getEventLoop(), $this)
             ->then(null, function (\Throwable $reason) {
                 $this->shutdown($reason);
             });
 
-        $this->workerScheduler = new WorkerScheduler();
-        $this->workerFactory = $factory;
-
         $this->on('__workerExit', function (string $workerID, int $pid) {
-            try {
-                $this->emit('workerExit', [$workerID, $pid]);
-            } finally {
-                $this->clearWorker($workerID, $pid);
-                if ($this->state === self::STATE_SHUTTING && $this->countWorkers() === 0) {
-                    $this->state = self::STATE_SHUTDOWN;
-                    $this->stopProcess();
-                }
+            $this->errorlessEmit('workerExit', [$workerID, $pid]);
+            $this->clearWorker($workerID, $pid);
+            if ($this->state === self::STATE_SHUTTING && $this->countWorkers() === 0) {
+                $this->state = self::STATE_SHUTDOWN;
+                $this->stopProcess();
             }
         });
     }
@@ -175,7 +171,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
             }
         }
 
-        $this->emit('shutdown');
+        $this->errorlessEmit('shutdown');
 
         if ($this->shutdownError) {
             throw $this->shutdownError;
@@ -209,38 +205,30 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
     {
         $type = $message->getType();
 
-        try {
-            switch ($type) {
-                case MessageTypeEnum::PROCESSED:
-                    $this->stat['processed']++;
-                    $this->workerScheduler->release($workerID);
-                    if (isset($this->workersInfo[$workerID])) {
-                        $this->workersInfo[$workerID]['processed']++;
-                    }
+        switch ($type) {
+            case MessageTypeEnum::PROCESSED:
+                $this->stat['processed']++;
+                $this->workerScheduler->release($workerID);
+                if (isset($this->workersInfo[$workerID])) {
+                    $this->workersInfo[$workerID]['processed']++;
+                }
 
-                    try {
-                        $this->emit('processed', [$workerID]);
-                    } finally {
-                        $this->tryDispatchCached();
-                    }
-
-                    break;
-                case MessageTypeEnum::STOP_SENDING:
-                    $this->workerScheduler->retire($workerID);
-                    try {
-                        $this->sendLastMessage($workerID);
-                    } catch (\Throwable $e) {
-                        $this->emit('error', ['sendingMessage', $e]);
-                    }
-                    break;
-                case MessageTypeEnum::KILL_ME:
-                    $this->killWorker($workerID, SIGKILL);
-                    break;
-                default:
-                    $this->emit('message', [$workerID, $message]);
-            }
-        } catch (\Throwable $e) {
-            $this->emit('error', ['handlingMessage', $e]);
+                $this->errorlessEmit('processed', [$workerID]);
+                $this->tryDispatchCached();
+                break;
+            case MessageTypeEnum::STOP_SENDING:
+                $this->workerScheduler->retire($workerID);
+                try {
+                    $this->sendLastMessage($workerID);
+                } catch (\Throwable $e) {
+                    $this->errorlessEmit('error', ['sendingMessage', $e]);
+                }
+                break;
+            case MessageTypeEnum::KILL_ME:
+                $this->killWorker($workerID, SIGKILL);
+                break;
+            default:
+                $this->errorlessEmit('message', [$workerID, $message]);
         }
     }
 
@@ -271,8 +259,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
             try {
                 $this->dispatch($message);
             } catch (\Throwable $e) {
-                $this->emit('error', ['dispatchingMessage', $e]);
-                return;
+                $this->errorlessEmit('error', ['dispatchingMessage', $e]);
             }
         }
 
@@ -281,7 +268,8 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
         if ($this->limitReached()) {
             $promise->always([$this, 'checkCachedLimitAndPause']);
             if (!$reachedBefore) {
-                $this->emit('limitReached');
+                // 边沿触发
+                $this->errorlessEmit('limitReached');
             }
         }
     }
@@ -428,7 +416,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                     $this->dispatch($this->cachedMessages->offsetGet(0));
                     $this->cachedMessages->shift();
                 } catch (\Throwable $e) {
-                    $this->emit('error', ['dispatchingMessage', $e]);
+                    $this->errorlessEmit('error', ['dispatchingMessage', $e]);
                 }
             } else {
                 $this->connection->resume()
@@ -458,7 +446,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
             try {
                 $workerID = $this->createWorker($this->workerFactory);
             } catch (\Throwable $e) {
-                $this->emit('error', ['creatingWorker', $e]);
+                $this->errorlessEmit('error', ['creatingWorker', $e]);
                 throw $e;
             }
             $this->stat['peakWorkerNum'] = max($this->countWorkers(), $this->stat['peakWorkerNum'] + 1);
@@ -493,9 +481,20 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                 $this->sendLastMessage($workerID);
             } catch (\Throwable $e) {
                 // TODO 如果没有成功向所有进程发送关闭,考虑是否需要做重试机制
-                $this->emit('error', ['shuttingDown', $e]);
+                $this->errorlessEmit('error', ['shuttingDown', $e]);
             }
         }
+    }
+
+    /**
+     * @param string $event
+     * @param array $args
+     */
+    private function errorlessEmit(string $event, array $args = [])
+    {
+        try {
+            $this->emit($event, $args);
+        } finally {}
     }
 
     /**
