@@ -5,6 +5,8 @@ namespace Archman\BugsBunny;
 use Archman\BugsBunny\Exception\ConnectFailedException;
 use Archman\BugsBunny\Exception\ConsumerBindingException;
 use Archman\BugsBunny\Exception\NotConnectedException;
+use Archman\BugsBunny\Exception\PauseConsumingException;
+use Archman\BugsBunny\Exception\ResumeConsumingException;
 use Archman\BugsBunny\Interfaces\AMQPConnectionInterface;
 use Archman\BugsBunny\Interfaces\ConsumerHandlerInterface;
 use Bunny\Async\Client;
@@ -24,6 +26,11 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
     const STATE_PAUSING = 'pausing';
     const STATE_PAUSED = 'paused';
     const STATE_RESUMING = 'resuming';
+
+    /**
+     * @var bool
+     */
+    private $tryResuming = false;
 
     /**
      * @var LoopInterface
@@ -180,15 +187,33 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
         return $this->channel->close()
             ->then(function () {
                 $this->state = self::STATE_PAUSED;
-                $this->emit("resumable");
                 $this->channel = null;
+
+                // 为了防止出现这样一种情况:
+                // 假设dispatcher已经缓存了足够多的消息,调起了pause方法
+                // 然后当dispatcher派发光了所有缓存数据后,调用了resume方法
+                // 但在这个时候pause还未完成,于是resume没有产生实际效果,然而所有worker都已经空闲了
+                // 然后就再没有机会在pause完成的时候调用resume了,最后彻底停止消费,程序一直进入event loop阻塞
+                // 所以增加一个标记,在pause完成的时候直接进行resume
+                if ($this->tryResuming) {
+                    return $this->resume();
+                }
             }, function ($reason) {
                 if ($this->client->isConnected()) {
                     $this->state = self::STATE_CONNECTED;
                 } else {
                     $this->state = self::STATE_DISCONNECTED;
+                    $this->client = null;
+                    $this->channel = null;
                 }
                 return $reason;
+            })
+            ->then(null, function ($reason) {
+                if ($reason instanceof \Throwable) {
+                    return new PauseConsumingException($reason->getMessage(), null, $reason);
+                } else {
+                    return new PauseConsumingException($reason);
+                }
             });
     }
 
@@ -205,9 +230,13 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
             $this->state === self::STATE_PAUSING ||
             $this->state === self::STATE_RESUMING
         ) {
+            if ($this->state === self::STATE_PAUSING && !$this->tryResuming) {
+                $this->tryResuming = true;
+            }
             return resolve();
         }
 
+        $this->tryResuming = false;
         $this->state = self::STATE_RESUMING;
 
         return $this->client->channel()
@@ -222,6 +251,13 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
             })
             ->then(function () {
                 $this->state = self::STATE_CONNECTED;
+            })
+            ->then(null, function ($reason) {
+                if ($reason instanceof \Throwable) {
+                    return new ResumeConsumingException($reason->getMessage(), null, $reason);
+                } else {
+                    return new ResumeConsumingException($reason);
+                }
             });
     }
 
