@@ -266,11 +266,21 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
         /** @var Promise $promise */
         $promise = $channel->ack($AMQPMessage);
         if ($this->limitReached()) {
-            $promise->always([$this, 'checkCachedLimitAndPause']);
             if (!$reachedBefore) {
                 // 边沿触发
                 $this->errorlessEmit('limitReached');
             }
+
+            $promise->always(function () {
+                if ($this->state === self::STATE_SHUTDOWN) {
+                    return;
+                }
+                if (count($this->cachedMessages) >= $this->cacheLimit) {
+                    $this->connection->pause()->then(null, function (\Throwable $error) {
+                        $this->shutdown($error);
+                    });
+                }
+            });
         }
     }
 
@@ -495,21 +505,5 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
         try {
             $this->emit($event, $args);
         } finally {}
-    }
-
-    /**
-     * 无空闲worker且缓存消息已满,就应该停止消费,优先消费缓存中的消息.
-     */
-    public function checkCachedLimitAndPause()
-    {
-        if ($this->state === self::STATE_SHUTDOWN) {
-            return;
-        }
-
-        if (count($this->cachedMessages) >= $this->cacheLimit) {
-            $this->connection->pause()->then(null, function (\Throwable $error) {
-                $this->shutdown($error);
-            });
-        }
     }
 }
