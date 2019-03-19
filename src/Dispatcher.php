@@ -124,8 +124,8 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
         $this->connection = $connection;
         $this->connection
             ->connect($this->getEventLoop(), $this)
-            ->then(function (\Throwable $reason) {
-                throw $reason;
+            ->then(null, function (\Throwable $reason) {
+                $this->shutdown($reason);
             });
 
         // 不在需要为每个worker设置一个的缓冲队列了
