@@ -228,6 +228,8 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
     /**
      * 请在初始化阶段设置,否则不能即时生效.
      *
+     * 一般来说不需要设置prefetch数量,prefetch不是瓶颈,worker的处理能力才是.
+     *
      * @param int $num
      */
     public function setPrefetch(int $num)
