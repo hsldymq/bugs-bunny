@@ -25,6 +25,7 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
     const STATE_CONNECTED = 'connected';
     const STATE_PAUSING = 'pausing';
     const STATE_PAUSED = 'paused';
+    const STATE_RESUMING = 'resuming';
 
     /**
      * @var LoopInterface
@@ -221,10 +222,13 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
         }
 
         if ($this->state === self::STATE_CONNECTED ||
-            $this->state === self::STATE_PAUSING
+            $this->state === self::STATE_PAUSING ||
+            $this->state === self::STATE_RESUMING
         ) {
             return resolve();
         }
+
+        $this->state = self::STATE_RESUMING;
 
         return $this->bindConsumer($this->channel)
             ->then(function () {
@@ -259,7 +263,7 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
         foreach ($this->queues as $queue => $handler) {
             $promises[] = $channel->consume($handler, $queue)
                 ->then(function (MethodBasicConsumeOkFrame $frame) {
-                    $this->consumerTags[] = $frame->consumerTag;
+                    $this->consumerTags[$frame->consumerTag] = true;
                 });
         }
 
