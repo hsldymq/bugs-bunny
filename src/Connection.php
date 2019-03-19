@@ -195,9 +195,9 @@ class Connection extends EventEmitter implements AMQPConnectionInterface
                 // 但在这个时候pause还未完成,于是resume没有产生实际效果,然而所有worker都已经空闲了
                 // 然后就再没有机会在pause完成的时候调用resume了,最后彻底停止消费,程序一直进入event loop阻塞
                 // 所以增加一个标记,在pause完成的时候直接进行resume
-                if ($this->tryResuming) {
-                    return $this->resume();
-                }
+                $ret = $this->tryResuming ? $this->resume() : null;
+
+                return $ret;
             }, function ($reason) {
                 if ($this->client->isConnected()) {
                     $this->state = self::STATE_CONNECTED;
