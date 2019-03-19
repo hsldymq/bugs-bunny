@@ -14,7 +14,7 @@ use Bunny\Message as AMQPMessage;
 use React\Promise\Promise;
 
 /**
- * @event message       参数: string $workerID, \Archman\Whisper\Message $msg
+ * @event message       参数: string $workerID, \Archman\Whisper\Message $msg, Dispatcher $master
  * @event processed     参数: string $workerID, Dispatcher $master
  * @event workerExit    参数: string $workerID, int $pid, Dispatcher $master
  * @event limitReached  参数: Dispatcher $master
