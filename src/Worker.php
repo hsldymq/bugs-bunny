@@ -106,7 +106,6 @@ class Worker extends AbstractWorker
 
                 break;
             case MessageTypeEnum::LAST_MSG:
-                echo "{$this->getWorkerID()} Received LAST_MSG\n";
                 $this->noMore = true;
                 break;
             default:
