@@ -15,7 +15,7 @@ use Bunny\Channel;
 use Bunny\Client;
 use Archman\Whisper\AbstractMaster;
 
-(new class () extends AbstractMaster {
+(new class() extends AbstractMaster {
     /**
      * @var int
      */
