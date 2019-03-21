@@ -277,6 +277,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                     'exchange' => $AMQPMessage->exchange,
                     'queue' => $queue,
                     'routingKey' => $AMQPMessage->routingKey,
+                    'headers' => $AMQPMessage->headers,
                 ],
                 'sent' => -1,       // 在dispatch的时候会填上准确的值,它代表已经向该worker派发了多少条队列消息
                                     // 用于worker退出阶段处理掉剩余的消息

@@ -75,14 +75,11 @@ class Worker extends AbstractWorker
         $cnt = $msg->getContent();
 
         if (in_array($msgType, [MessageTypeEnum::QUEUE, MessageTypeEnum::LAST_MSG])) {
-            $contentArray = json_decode($cnt, true);
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                $this->errorlessEmit('error', [
-                    'decodingMessage',
-                    new \Exception(sprintf("Error:%s, Content:%s", json_last_error_msg(), $cnt))
-                ]);
+            try {
+                $decodedMsg = $this->decodeMessage($cnt);
+            } catch (\Throwable $e) {
+                $this->errorlessEmit('error', ['decodingMessage', $e]);
                 $this->trySetShutdownTimer();
-
                 return;
             }
         }
@@ -95,12 +92,16 @@ class Worker extends AbstractWorker
                     goto end;
                 }
 
-                $info = array_merge(
-                    $contentArray['meta']['amqp'] ?? [],
-                    ['content' => $contentArray['content'] ?? '']
-                );
                 try {
+                    $info = $decodedMsg['meta']['amqp'] ?? [];
+                    $info['content'] = $decodedMsg['content'] ?? '';
                     $queueMsg = new QueueMessage($info);
+                } catch (\Throwable $e) {
+                    $this->errorlessEmit('error', ['decodingMessage', $e]);
+                    goto end;
+                }
+
+                try {
                     call_user_func($this->messageHandler, $queueMsg, $this);
                 } catch (\Throwable $e) {
                     $this->errorlessEmit('error', ['processingMessage', $cnt]);
@@ -122,7 +123,7 @@ class Worker extends AbstractWorker
 
         $this->trySetShutdownTimer();
 
-        $sent = $contentArray['meta']['sent'] ?? -1;
+        $sent = $decodedMsg['meta']['sent'] ?? null;
         if ($this->noMore && $this->received === $sent) {
             $this->sendMessage(new Message(MessageTypeEnum::KILL_ME, ''));
         }
@@ -204,5 +205,21 @@ class Worker extends AbstractWorker
             $this->removeTimer($this->shutdownTimer);
             $this->shutdownTimer = null;
         }
+    }
+
+    /**
+     * @param string $content
+     * @return array
+     * @throws \Exception
+     */
+    private function decodeMessage(string $content): array
+    {
+        $decoded = json_decode($content, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new \Exception(sprintf("Error:%s, Content:%s", json_last_error_msg(), $content));
+        }
+
+        return $decoded;
     }
 }
