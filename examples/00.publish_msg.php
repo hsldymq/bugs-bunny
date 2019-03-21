@@ -1,5 +1,14 @@
 <?php
 
+/**
+ * 这个脚本用于投放消息到rabbitmq队列中,供后续的示例脚本消费.
+ * 修改amqp_params.php中的连接配置来使得你的机器连上自己的或远程的rabbitmq服务器
+ *
+ * 执行命令:
+ *      php 00.publish_msg.php ${消息数量} ${每条消息大小} ${是否每秒周期性持续投放}
+ *      其中参数3值为0或1,并且可选, 默认为0
+ */
+
 require_once __DIR__.'/../vendor/autoload.php';
 
 use Bunny\Channel;
@@ -7,19 +16,20 @@ use Bunny\Client;
 use Archman\Whisper\AbstractMaster;
 
 (new class () extends AbstractMaster {
+    /**
+     * @var int
+     */
     private $numMessages;
 
+    /**
+     * @var int
+     */
     private $contentLength;
 
+    /**
+     * @var bool
+     */
     private $periodic;
-
-    private $connectionOptions = [
-        'host' => '127.0.0.1',
-        'port' => 5672,
-        'vhost' => '/',
-        'user' => 'guest',
-        'password' => 'guest',
-    ];
 
     /**
      * @var Client
@@ -30,14 +40,6 @@ use Archman\Whisper\AbstractMaster;
      * @var Channel
      */
     private $channel;
-
-    private $exchange = "bugsbunny";
-
-    private $queues = [
-        'queue1' => 'queue1',
-        'queue2' => 'queue2',
-        'queue3' => 'queue3',
-    ];
 
     public function __construct()
     {
@@ -60,34 +62,38 @@ use Archman\Whisper\AbstractMaster;
 
     public function run()
     {
-        $this->client = new Client($this->connectionOptions);
+        $params = require __DIR__.'/amqp_params.php';
+        $queues = $params['queues'];
+        $exchange = $params['exchange'];
+
+        $this->client = new Client($params['connectionOptions']);
         $this->client->connect();
         $this->channel = $this->client->channel();
-        $this->channel->exchangeDeclare($this->exchange);
-        foreach ($this->queues as $routingKey => $queue) {
+        $this->channel->exchangeDeclare($exchange);
+        foreach ($queues as $routingKey => $queue) {
             $this->channel->queueDeclare($queue);
-            $this->channel->queueBind($queue, $this->exchange, $routingKey);
+            $this->channel->queueBind($queue, $exchange, $routingKey);
         }
 
         if ($this->periodic) {
             $this->addSignalHandler(SIGINT, function () {
                 $this->stopProcess();
             });
-            $this->addTimer(1, true, function () {
-                $routingKeys = array_keys($this->queues);
+            $this->addTimer(1, true, function () use ($queues, $exchange) {
+                $routingKeys = array_keys($queues);
                 for ($i = 0; $i < $this->numMessages; $i++) {
                     $key = $routingKeys[array_rand($routingKeys)];
                     $content = str_repeat('x', $this->contentLength);
-                    $this->channel->publish($content, [], $this->exchange, $key);
+                    $this->channel->publish($content, [], $exchange, $key);
                 }
             });
             $this->process();
         } else {
-            $routingKeys = array_keys($this->queues);
+            $routingKeys = array_keys($queues);
             for ($i = 0; $i < $this->numMessages; $i++) {
                 $key = $routingKeys[array_rand($routingKeys)];
                 $content = str_repeat('x', $this->contentLength);
-                $this->channel->publish($content, [], $this->exchange, $key);
+                $this->channel->publish($content, [], $exchange, $key);
             }
         }
 
