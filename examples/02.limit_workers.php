@@ -6,6 +6,14 @@
  *
  * 为了防止这种情况发生,可以为dispatcher设置fork worker的上限数量来达到这个目的.
  * 下面的代码与示例01大同小异,但我们调用了setMaxWorkers设置worker上线,并调用setCacheLimit允许在worker忙碌的时候缓存一些消息,待有空闲的时候直接派发.
+ *
+ * 在这个示例里,如果在运行过程中你按CTRL+C试图停止运行,你会发现它有时候并不会立刻停止,而是会试图在运行片刻时间后才停止.
+ * 这是因为dispatcher会将缓存起来的消息分发完之后才结束运行, 这样我们才能确保消费的每一条消息都能够被worker给处理掉而不遗漏.
+ *
+ * 那么问题来了,我们考虑了worker在高负载情况下的数量限制,那么当从高负载情形中恢复后,可能并不需要那么多worker来处理
+ * 这时势必就会出现有些worker一直处于闲置状态,但我们不想浪费不必要的系统资源,怎么办呢?
+ *
+ * 在示例03中,可以看到我们能够解决这个问题.
  */
 
 require_once __DIR__.'/../vendor/autoload.php';
@@ -44,7 +52,7 @@ $dispatcher->on('processed', function (string $workerID, Dispatcher $dispatcher)
     $processed = $stat['processed'];
     $consumed = $stat['consumed'];
 
-    echo "{$processed}/{$consumed} - Worker {$workerID} Has Processed The Message, Workers:{$dispatcher->countWorkers()}, Schedulable:{$dispatcher->countSchedulable()}.\n";
+    echo "{$processed}/{$consumed} - Worker {$workerID} Has Processed A Message, Workers:{$dispatcher->countWorkers()}, Schedulable:{$dispatcher->countSchedulable()}.\n";
 });
 
 $dispatcher->on('workerExit', function (string $workerID, int $pid, Dispatcher $dispatcher) {
