@@ -82,13 +82,15 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
      * [
      *      'consumed' => (int),            // 消费了的消息总数
      *      'processed' => (int),           // 处理了的消息总数
-     *      'peakWorkerNum' => (int),       // worker数量峰值
+     *      'peakNumWorkers' => (int),      // worker数量峰值
+     *      'peakNumCached' => (int),       // 缓存消息数量峰值
      * ]
      */
     private $stat = [
         'consumed' => 0,
         'processed' => 0,
-        'peakWorkerNum' => 0,
+        'peakNumWorkers' => 0,
+        'peakNumCached' => 0,
     ];
 
     /**
@@ -255,6 +257,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
 
         if ($reachedBefore) {
             $this->cachedMessages->push($message);
+            $this->stat['peakNumCached'] = max($this->stat['peakNumCached'], count($this->cachedMessages));
         } else {
             try {
                 $this->dispatch($message);
@@ -459,7 +462,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                 $this->errorlessEmit('error', ['creatingWorker', $e]);
                 throw $e;
             }
-            $this->stat['peakWorkerNum'] = max($this->countWorkers(), $this->stat['peakWorkerNum'] + 1);
+            $this->stat['peakNumWorkers'] = max($this->countWorkers(), $this->stat['peakNumWorkers'] + 1);
 
             $pid = $this->getWorkerPID($workerID);
             $this->workerScheduler->add($workerID, true);

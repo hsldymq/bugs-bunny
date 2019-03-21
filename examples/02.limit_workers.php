@@ -34,10 +34,10 @@ $dispatcher->setCacheLimit(1000);
 
 $dispatcher->on('processed', function (string $workerID, Dispatcher $dispatcher) {
     $stat = $dispatcher->getStat();
-    $process = $stat['processed'];
+    $processed = $stat['processed'];
     $consumed = $stat['consumed'];
 
-    echo "{$process}/{$consumed} - Worker {$workerID} Has Processed The Message, Workers:{$dispatcher->countWorkers()}, Schedulable:{$dispatcher->countSchedulable()}.\n";
+    echo "{$processed}/{$consumed} - Worker {$workerID} Has Processed The Message, Workers:{$dispatcher->countWorkers()}, Schedulable:{$dispatcher->countSchedulable()}.\n";
 });
 
 $dispatcher->on('workerExit', function (string $workerID, int $pid, Dispatcher $dispatcher) {
@@ -55,7 +55,8 @@ $dispatcher->on('shutdown', function (Dispatcher $dispatcher) {
     echo "\n";
     echo "Consumed Message: {$stat['consumed']}\n";
     echo "Processed Message: {$stat['processed']}\n";
-    echo "Peak Worker Number: {$stat['peakWorkerNum']}\n";
+    echo "Peak Number Of Workers: {$stat['peakNumWorkers']}\n";
+    echo "Peak Number Of Cached Messages: {$stat['peakNumCached']}\n";
     echo "Peak Memory Usage: ".number_format(memory_get_peak_usage()).' Bytes'.PHP_EOL;
 });
 
