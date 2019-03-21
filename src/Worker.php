@@ -37,7 +37,7 @@ class Worker extends AbstractWorker
     /**
      * @var int 已经收到的队列消息数量
      */
-    private $receive = 0;
+    private $received = 0;
 
     /**
      * @var bool
@@ -89,7 +89,7 @@ class Worker extends AbstractWorker
 
         switch ($msgType) {
             case MessageTypeEnum::QUEUE:
-                $this->receive++;
+                $this->received++;
 
                 if (!$this->messageHandler) {
                     goto end;
@@ -123,7 +123,7 @@ class Worker extends AbstractWorker
         $this->trySetShutdownTimer();
 
         $sent = $contentArray['meta']['sent'] ?? -1;
-        if ($this->noMore && $this->receive === $sent) {
+        if ($this->noMore && $this->received === $sent) {
             $this->sendMessage(new Message(MessageTypeEnum::KILL_ME, ''));
         }
     }
@@ -161,6 +161,16 @@ class Worker extends AbstractWorker
     public function setMessageHandler(callable $h)
     {
         $this->messageHandler = $h;
+    }
+
+    /**
+     * 获得worker当前已经接收到的amqp消息数量.
+     *
+     * @return int
+     */
+    public function getReceivedNum(): int
+    {
+        return $this->received;
     }
 
     public function shutdown()
