@@ -385,6 +385,17 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
     }
 
     /**
+     * @param string $event
+     * @param array $args
+     */
+    public function errorlessEmit(string $event, array $args = [])
+    {
+        try {
+            $this->emit($event, $args);
+        } finally {}
+    }
+
+    /**
      * 派发消息.
      *
      * @param array $message
@@ -497,16 +508,5 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                 $this->errorlessEmit('error', ['shuttingDown', $e]);
             }
         }
-    }
-
-    /**
-     * @param string $event
-     * @param array $args
-     */
-    private function errorlessEmit(string $event, array $args = [])
-    {
-        try {
-            $this->emit($event, $args);
-        } finally {}
     }
 }

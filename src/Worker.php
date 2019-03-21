@@ -162,6 +162,13 @@ class Worker extends AbstractWorker
         }
     }
 
+    public function errorlessEmit(string $event, array $args = [])
+    {
+        try {
+            $this->emit($event, $args);
+        } finally {}
+    }
+
     private function trySetShutdownTimer()
     {
         if (!$this->idleShutdown || $this->shutdownTimer) {
@@ -179,12 +186,5 @@ class Worker extends AbstractWorker
             $this->removeTimer($this->shutdownTimer);
             $this->shutdownTimer = null;
         }
-    }
-
-    private function errorlessEmit(string $event, array $args = [])
-    {
-        try {
-            $this->emit($event, $args);
-        } finally {}
     }
 }
