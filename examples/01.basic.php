@@ -13,6 +13,9 @@ $factory->setMessageHandler(function (QueueMessage $message, Worker $worker) {
     // 模拟正常处理逻辑
     usleep(1000);
 });
+$factory->registerSignal(SIGINT, function () {
+    // Ctrl + C会向前端进程组发送SIGINT信号,我们不希望worker也被这个信号影响,而是由dispatcher来控制退出
+});
 $factory->registerEvent('error', function (string $reason, \Throwable $e, Worker $worker) {
     echo "Worker Error. Reason: {$reason}, Message: {$e->getMessage()}\n";
     $worker->shutdown();

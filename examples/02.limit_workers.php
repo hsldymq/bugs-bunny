@@ -13,6 +13,9 @@ $factory->setMessageHandler(function (QueueMessage $message, Worker $worker) {
     // 一次处理200ms,在消息量很多时,这会造成Dispatcher大量fork出worker进行处理
     usleep(200000);
 });
+$factory->registerSignal(SIGINT, function () {
+    // Ctrl + C会向前端进程组发送SIGINT信号,我们不希望worker也被这个信号影响,而是由dispatcher来控制退出
+});
 $factory->registerEvent('error', function (string $reason, \Throwable $e, Worker $worker) {
     echo "Worker Error. Reason: {$reason}, Message: {$e->getMessage()}\n";
 });
