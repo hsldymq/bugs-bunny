@@ -30,13 +30,18 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
     use EventEmitterTrait;
 
     const STATE_RUNNING = 1;
-    const STATE_SHUTTING = 2;
+    const STATE_FLUSHING = 2;
     const STATE_SHUTDOWN = 3;
 
     /**
      * @var AMQPConnectionInterface
      */
     private $connection;
+
+    /**
+     * @var bool
+     */
+    private $disconnecting = false;
 
     /**
      * @var array
@@ -136,10 +141,6 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
         $this->on('__workerExit', function (string $workerID, int $pid) {
             $this->errorlessEmit('workerExit', [$workerID, $pid]);
             $this->clearWorker($workerID, $pid);
-            if ($this->state === self::STATE_SHUTTING && $this->countWorkers() === 0) {
-                $this->state = self::STATE_SHUTDOWN;
-                $this->stopProcess();
-            }
         });
     }
 
@@ -156,13 +157,12 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
         $this->idMap = [];
         $this->state = self::STATE_RUNNING;
 
-        while ($this->state !== self::STATE_SHUTDOWN) {
+        while ($this->state === self::STATE_RUNNING) {
             try {
                 $this->process($this->patrolPeriod);
             } catch (\Throwable $e) {
                 $this->shutdown($e);
             }
-
             // 补杀僵尸进程
             for ($i = 0, $len = count($this->idMap); $i < $len; $i++) {
                 $pid = pcntl_wait($status, WNOHANG);
@@ -173,6 +173,26 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
             }
         }
 
+        // 将剩余缓存的消息派发给worker处理
+        while ($this->state === self::STATE_FLUSHING && count($this->cachedMessages) > 0) {
+            while (!$this->limitReached()) {
+                $this->tryDispatchCached();
+            }
+
+            $this->process(0.1);
+        }
+
+        // 通知所有worker退出
+        $this->informWorkersQuit();
+        do {
+            if ($this->countWorkers() === 0) {
+                $this->state = self::STATE_SHUTDOWN;
+                break;
+            }
+
+            $this->process(0.1);
+        } while (true);
+
         $this->errorlessEmit('shutdown');
 
         if ($this->shutdownError) {
@@ -180,29 +200,28 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
         }
     }
 
+    /**
+     * @param \Throwable|null $withError
+     */
     public function shutdown(\Throwable $withError = null)
     {
-        if ($this->state !== self::STATE_RUNNING) {
+        if ($this->state !== self::STATE_RUNNING || $this->disconnecting) {
             return;
         }
 
-        $this->connection->disconnect();
-
-        $this->state = self::STATE_SHUTTING;
-        $withError && $this->shutdownError = $withError;
-        if (count($this->cachedMessages) > 0) {
-            return;
-        }
-
-        if ($this->countWorkers() === 0) {
-            $this->state = self::STATE_SHUTDOWN;
+        $this->disconnecting = true;
+        $this->connection->disconnect()->always(function () use ($withError) {
+            $this->state = self::STATE_FLUSHING;
+            $this->disconnecting = false;
+            $withError && $this->shutdownError = $withError;
             $this->stopProcess();
-            return;
-        }
-
-        $this->informWorkersQuit();
+        });
     }
 
+    /**
+     * @param string $workerID
+     * @param Message $message
+     */
     public function onMessage(string $workerID, Message $message)
     {
         $type = $message->getType();
@@ -435,21 +454,23 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
 
     private function tryDispatchCached()
     {
-        if (!$this->limitReached()) {
-            // 优先派发缓存的消息
-            if (count($this->cachedMessages) > 0) {
-                try {
-                    $this->dispatch($this->cachedMessages->offsetGet(0));
-                    $this->cachedMessages->shift();
-                } catch (\Throwable $e) {
-                    $this->errorlessEmit('error', ['dispatchingMessage', $e]);
-                }
-            } else {
-                $this->connection->resume()
-                    ->then(null, function (\Throwable $error) {
-                        $this->shutdown($error);
-                    });
+        if ($this->limitReached()) {
+            return;
+        }
+
+        // 优先派发缓存的消息
+        if (count($this->cachedMessages) > 0) {
+            try {
+                $this->dispatch($this->cachedMessages->offsetGet(0));
+                $this->cachedMessages->shift();
+            } catch (\Throwable $e) {
+                $this->errorlessEmit('error', ['dispatchingMessage', $e]);
             }
+        } else if ($this->state === self::STATE_RUNNING) {
+            $this->connection->resume()
+                ->then(null, function (\Throwable $error) {
+                    $this->shutdown($error);
+                });
         }
     }
 
