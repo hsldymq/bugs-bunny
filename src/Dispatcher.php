@@ -14,16 +14,26 @@ use Bunny\Message as AMQPMessage;
 use React\Promise\Promise;
 
 /**
- * @event message       参数: string $workerID, \Archman\Whisper\Message $msg, Dispatcher $master
- * @event processed     参数: string $workerID, Dispatcher $master
- * @event workerExit    参数: string $workerID, int $pid, Dispatcher $master
- * @event limitReached  参数: Dispatcher $master
- * @event error         参数: string $reason, \Throwable $ex, Dispatcher $master
+ * 可以使用on方法监听以下预定义事件:
+ * @event processed     一条amqp消息被worker成功处理
+ *                      参数: string $workerID, Dispatcher $master
+ *
+ * @event workerExit    worker退出
+ *                      参数: string $workerID, int $pid, Dispatcher $master
+ *
+ * @event limitReached  worker数量达到上限
+ *                      参数: Dispatcher $master
+ *
+ * @event message       worker发来一条自定义消息
+ *                      参数: string $workerID, \Archman\Whisper\Message $msg, Dispatcher $master
+ *
+ * @event error         出现错误
+ *                      参数: string $reason, \Throwable $ex, Dispatcher $master
  *                      $reason enum:
- *                          'shuttingDown'
- *                          'sendingMessage'
- *                          'dispatchingMessage',
- *                          'creatingWorker'
+ *                          'shuttingDown'          程序结束,关闭剩余worker过程中出错
+ *                          'dispatchingMessage'    向worker投放amqp消息时出错
+ *                          'sendingMessage'        向worker发送控制信息时出错
+ *                          'creatingWorker'        创建worker时出错
  */
 class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
 {

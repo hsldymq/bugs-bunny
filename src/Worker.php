@@ -7,12 +7,18 @@ use Archman\Whisper\Message;
 use React\EventLoop\TimerInterface;
 
 /**
- * @event message           参数: \Archman\Whisper\Message $msg, Worker $worker
- * @event workerCreated     参数: string $workerID, Worker $worker
- * @event error             参数: string $reason, \Throwable $ex, Worker $worker
+ * 可以使用on方法或在WorkerFactory使用registerEvent方法监听以下预定义事件:
+ * @event workerCreated     worker被初始化时
+ *                          参数: string $workerID, Worker $worker
+ *
+ * @event message           dispatcher发来自定义消息时
+ *                          参数: \Archman\Whisper\Message $msg, Worker $worker
+ *
+ * @event error             发生错误
+ *                          参数: string $reason, \Throwable $ex, Worker $worker
  *                          $reason enum:
- *                              'decodingMessage'
- *                              'processingMessage'
+ *                              'decodingMessage'       解码非预定义消息时结构错误
+ *                              'processingMessage'     使用用户提供的handler处理amqp消息时出错
  */
 class Worker extends AbstractWorker
 {
