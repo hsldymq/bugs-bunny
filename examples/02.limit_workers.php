@@ -5,7 +5,7 @@
  * 如果大量消息到来,dispatcher就会fork大量的worker来处理,势必大量消耗系统资源.
  *
  * 为了防止这种情况发生,可以为dispatcher设置fork worker的上限数量来达到这个目的.
- * 下面的代码与01大同小异,但我们调用了setMaxWorkers设置worker上线,并调用setCacheLimit允许在worker忙碌的时候缓存一些消息,待有空闲的时候直接派发.
+ * 下面的代码与示例01大同小异,但我们调用了setMaxWorkers设置worker上线,并调用setCacheLimit允许在worker忙碌的时候缓存一些消息,待有空闲的时候直接派发.
  */
 
 require_once __DIR__.'/../vendor/autoload.php';
@@ -71,5 +71,5 @@ $dispatcher->addSignalHandler(SIGINT, function () use ($dispatcher) {
     $dispatcher->shutdown();
 });
 
-echo ' [*] Waiting for messages. To exit press CTRL+C', "\n";
+echo "Waiting for messages. To exit press CTRL+C\n";
 $dispatcher->run();
