@@ -14,19 +14,15 @@ $factory->setMessageHandler(function (QueueMessage $message, Worker $worker) {
     usleep(200000);
 });
 $factory->registerSignal(SIGINT, function () {
-    // Ctrl + C会向前端进程组发送SIGINT信号,我们不希望worker也被这个信号影响,而是由dispatcher来控制退出
+    // Ctrl+C会向前端进程组发送SIGINT信号,我们不希望worker也被这个信号影响,而是希望由dispatcher来控制它的生存周期
 });
 $factory->registerEvent('error', function (string $reason, \Throwable $e, Worker $worker) {
     echo "Worker Error. Reason: {$reason}, Message: {$e->getMessage()}\n";
 });
 
-$conn = new Connection([
-    'host' => '127.0.0.1',
-    'port' => 5672,
-    'vhost' => '/',
-    'user' => 'guest',
-    'password' => 'guest',
-], ['queue1', 'queue2', 'queue3']);
+
+$params = require __DIR__.'/amqp_params.php';
+$conn = new Connection($params['connectionOptions'], $params['queues']);
 
 $dispatcher = new Dispatcher($conn, $factory);
 
