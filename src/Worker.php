@@ -74,15 +74,17 @@ class Worker extends AbstractWorker
         $msgType = $msg->getType();
         $cnt = $msg->getContent();
 
-        $contentArray = json_decode($cnt, true);
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            $this->errorlessEmit('error', [
-                'decodingMessage',
-                new \Exception(sprintf("Error:%s, Content:%s", json_last_error_msg(), $cnt))
-            ]);
-            $this->trySetShutdownTimer();
+        if (in_array($msgType, [MessageTypeEnum::QUEUE, MessageTypeEnum::LAST_MSG])) {
+            $contentArray = json_decode($cnt, true);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                $this->errorlessEmit('error', [
+                    'decodingMessage',
+                    new \Exception(sprintf("Error:%s, Content:%s", json_last_error_msg(), $cnt))
+                ]);
+                $this->trySetShutdownTimer();
 
-            return;
+                return;
+            }
         }
 
         switch ($msgType) {
