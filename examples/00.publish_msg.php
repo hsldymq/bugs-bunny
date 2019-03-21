@@ -76,10 +76,12 @@ use Archman\Whisper\AbstractMaster;
         }
 
         if ($this->periodic) {
-            $this->addSignalHandler(SIGINT, function () {
+            $timer = null;
+            $this->addSignalHandler(SIGINT, function () use (&$timer) {
+                $this->removeTimer($timer);
                 $this->stopProcess();
             });
-            $this->addTimer(1, true, function () use ($queues, $exchange) {
+            $timer = $this->addTimer(1, true, function () use ($queues, $exchange) {
                 $routingKeys = array_keys($queues);
                 for ($i = 0; $i < $this->numMessages; $i++) {
                     $key = $routingKeys[array_rand($routingKeys)];
@@ -87,6 +89,8 @@ use Archman\Whisper\AbstractMaster;
                     $this->channel->publish($content, [], $exchange, $key);
                 }
             });
+
+            echo "To exit press CTRL+C\n";
             $this->process();
         } else {
             $routingKeys = array_keys($queues);
