@@ -1,5 +1,13 @@
 <?php
 
+/**
+ * 在这个示例中,我们模拟worker在面临复杂业务逻辑或因为其他IO阻塞的情况下导致处理事件过长的情况.
+ * 如果大量消息到来,dispatcher就会fork大量的worker来处理,势必大量消耗系统资源.
+ *
+ * 为了防止这种情况发生,可以为dispatcher设置fork worker的上限数量来达到这个目的.
+ * 下面的代码与01大同小异,但我们调用了setMaxWorkers设置worker上线,并调用setCacheLimit允许在worker忙碌的时候缓存一些消息,待有空闲的时候直接派发.
+ */
+
 require_once __DIR__.'/../vendor/autoload.php';
 
 use Archman\BugsBunny\QueueMessage;
@@ -10,7 +18,7 @@ use Archman\BugsBunny\Connection;
 
 $factory = new WorkerFactory();
 $factory->setMessageHandler(function (QueueMessage $message, Worker $worker) {
-    // 一次处理200ms,在消息量很多时,这会造成Dispatcher大量fork出worker进行处理
+    // 处理200ms,在消息量很多时,这会造成Dispatcher大量fork出worker
     usleep(200000);
 });
 $factory->registerSignal(SIGINT, function () {
