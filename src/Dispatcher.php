@@ -354,6 +354,8 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
         $this->stat = [
             'consumed' => 0,
             'processed' => 0,
+            'peakNumWorkers' => 0,
+            'peakNumCached' => 0,
         ];
     }
 
