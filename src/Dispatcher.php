@@ -163,6 +163,8 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
             return;
         }
 
+        $this->errorlessEmit('start');
+
         $this->workersInfo = [];
         $this->idMap = [];
         $this->state = self::STATE_RUNNING;
