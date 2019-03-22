@@ -8,8 +8,8 @@ use React\EventLoop\TimerInterface;
 
 /**
  * 可以使用on方法或在WorkerFactory使用registerEvent方法监听以下预定义事件:
- * @event workerCreated     worker被初始化时
- *                          参数: string $workerID, Worker $worker
+ * @event start             worker启动
+ *                          参数: Worker $worker
  *
  * @event message           dispatcher发来自定义消息时
  *                          参数: \Archman\Whisper\Message $msg, Worker $worker
@@ -67,7 +67,6 @@ class Worker extends AbstractWorker
     {
         parent::__construct($id, $socketFD);
 
-        $this->errorlessEmit('workerCreated', [$id]);
         $this->trySetShutdownTimer();
     }
 
@@ -76,6 +75,8 @@ class Worker extends AbstractWorker
         if ($this->state !== 'shutdown') {
             return;
         }
+
+        $this->errorlessEmit('start');
 
         $this->state = 'running';
         while (true) {
