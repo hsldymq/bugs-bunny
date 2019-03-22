@@ -57,7 +57,7 @@ $dispatcher->on('processed', function (string $workerID, Dispatcher $dispatcher)
     $processed = $stat['processed'];
     $consumed = $stat['consumed'];
 
-    echo "{$processed}/{$consumed} - Worker {$workerID} Has Processed A Message, Workers:{$dispatcher->countWorkers()}, Schedulable:{$dispatcher->countSchedulable()}.\n";
+    echo "{$processed}/{$consumed} - Worker {$workerID} Has Processed A Message, Workers:{$dispatcher->countWorkers()}, Idle:{$dispatcher->countSchedulable()}.\n";
 });
 
 $dispatcher->on('workerExit', function (string $workerID, int $pid, Dispatcher $dispatcher) {
