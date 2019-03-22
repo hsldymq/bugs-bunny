@@ -14,11 +14,15 @@ use React\EventLoop\TimerInterface;
  * @event message           dispatcher发来自定义消息时
  *                          参数: \Archman\Whisper\Message $msg, Worker $worker
  *
+ * @event disconnected      与dispatcher的连接中断,即将退出
+ *                          参数: Worker $worker
+ *
  * @event error             发生错误
  *                          参数: string $reason, \Throwable $ex, Worker $worker
  *                          $reason enum:
  *                              'decodingMessage'       解码非预定义消息时结构错误
  *                              'processingMessage'     使用用户提供的handler处理amqp消息时出错
+ *                              'unrecoverable'         当出现了不可恢复的错误,即将退出时
  */
 class Worker extends AbstractWorker
 {
@@ -30,9 +34,9 @@ class Worker extends AbstractWorker
     private $messageHandler;
 
     /**
-     * @var string running / shutting
+     * @var string running / shutting / shutdown
      */
-    private $state = 'running';
+    private $state = 'shutdown';
 
     /**
      * @var int 已经收到的队列消息数量
@@ -65,6 +69,28 @@ class Worker extends AbstractWorker
 
         $this->errorlessEmit('workerCreated', [$id]);
         $this->trySetShutdownTimer();
+    }
+
+    public function run()
+    {
+        if ($this->state !== 'shutdown') {
+            return;
+        }
+
+        $this->state = 'running';
+        while (true) {
+            try {
+                $this->process(60);
+            } catch (\Throwable $e) {
+                $this->errorlessEmit('error', ['unrecoverable', $e]);
+                break;
+            }
+
+            if (!$this->getCommunicator()->isReadable() && !$this->getCommunicator()->isWritable()) {
+                $this->errorlessEmit('disconnected');
+                break;
+            }
+        }
     }
 
     public function handleMessage(Message $msg)
