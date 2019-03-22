@@ -15,6 +15,8 @@ use React\Promise\Promise;
 
 /**
  * 可以使用on方法监听以下预定义事件:
+ * @event start         dispatcher启动
+ *
  * @event processed     一条amqp消息被worker成功处理
  *                      参数: string $workerID, Dispatcher $master
  *
