@@ -1,1 +1,1 @@
-<h1>bugs-bunny</h1>
+<h1 align="center">bugs-bunny</h1>
