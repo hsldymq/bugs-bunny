@@ -17,6 +17,8 @@ use React\Promise\Promise;
  * 可以使用on方法监听以下预定义事件:
  * @event start         dispatcher启动
  *
+ * @event patrolling    进行一次僵尸进程检查周期
+ *
  * @event processed     一条amqp消息被worker成功处理
  *                      参数: string $workerID, Dispatcher $master
  *
@@ -177,6 +179,9 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
             } catch (\Throwable $e) {
                 $this->shutdown($e);
             }
+
+            $this->errorlessEmit('patrolling');
+
             // 补杀僵尸进程
             for ($i = 0, $len = count($this->idMap); $i < $len; $i++) {
                 $pid = pcntl_wait($status, WNOHANG);
