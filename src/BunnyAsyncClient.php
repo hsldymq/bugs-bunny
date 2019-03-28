@@ -24,6 +24,7 @@ class BunnyAsyncClient extends Client implements EventEmitterInterface
         try {
             parent::onDataAvailable();
         } catch (\Throwable $e) {
+            $this->eventLoop->removeReadStream($this->getStream());
             if (@feof($this->stream)) {
                 $this->state = ClientStateEnum::ERROR;
             }
