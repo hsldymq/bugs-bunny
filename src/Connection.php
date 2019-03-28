@@ -135,9 +135,9 @@ class Connection implements AMQPConnectionInterface
                 return $this->client->channel();
             }, function ($reason) {
                 if ($reason instanceof \Throwable) {
-                    return new ConnectFailedException($reason->getMessage(), null, $reason);
+                    throw new ConnectFailedException($reason->getMessage(), null, $reason);
                 } else {
-                    return new ConnectFailedException($reason);
+                    throw new ConnectFailedException($reason);
                 }
             })
             ->then(function (Channel $channel) {
@@ -205,13 +205,13 @@ class Connection implements AMQPConnectionInterface
                     $this->client = null;
                     $this->channel = null;
                 }
-                return $reason;
+                return reject($reason);
             })
             ->then(null, function ($reason) {
                 if ($reason instanceof \Throwable) {
-                    return new PauseConsumingException($reason->getMessage(), null, $reason);
+                    throw new PauseConsumingException($reason->getMessage(), null, $reason);
                 } else {
-                    return new PauseConsumingException($reason);
+                    throw new PauseConsumingException($reason);
                 }
             });
     }
@@ -253,9 +253,9 @@ class Connection implements AMQPConnectionInterface
             })
             ->then(null, function ($reason) {
                 if ($reason instanceof \Throwable) {
-                    return new ResumeConsumingException($reason->getMessage(), null, $reason);
+                    throw new ResumeConsumingException($reason->getMessage(), null, $reason);
                 } else {
-                    return new ResumeConsumingException($reason);
+                    throw new ResumeConsumingException($reason);
                 }
             });
     }
@@ -292,9 +292,9 @@ class Connection implements AMQPConnectionInterface
 
         return all($promises)->then(null, function ($reason) {
             if ($reason instanceof \Throwable) {
-                return reject(new ConsumerBindingException($reason->getMessage(), null, $reason));
+                throw new ConsumerBindingException($reason->getMessage(), null, $reason);
             } else {
-                return reject(new ConsumerBindingException($reason));
+                throw new ConsumerBindingException($reason);
             }
         });
     }
