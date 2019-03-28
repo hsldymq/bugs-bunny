@@ -229,9 +229,12 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
             return;
         }
 
-        $this->connection->disconnect()->always(function () use ($withError) {
+        if ($withError && !$this->shutdownError) {
+            $this->shutdownError = $withError;
+        }
+
+        $this->connection->disconnect()->always(function () {
             $this->state = self::STATE_FLUSHING;
-            $withError && $this->shutdownError = $withError;
             $this->stopProcess();
         });
     }
