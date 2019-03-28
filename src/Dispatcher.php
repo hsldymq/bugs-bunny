@@ -178,6 +178,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
             try {
                 $this->process($this->patrolPeriod);
             } catch (\Throwable $e) {
+                $this->removeProcessTimer();
                 $this->shutdown($e);
             }
 
