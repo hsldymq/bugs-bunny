@@ -28,15 +28,19 @@ class Worker extends AbstractWorker
 {
     use EventEmitterTrait;
 
+    const STATE_RUNNING = 1;
+    const STATE_SHUTTING = 2;
+    const STATE_SHUTDOWN = 3;
+
     /**
      * @var callable
      */
     private $messageHandler;
 
     /**
-     * @var string running / shutting / shutdown
+     * @var int
      */
-    private $state = 'shutdown';
+    private $state = self::STATE_SHUTDOWN;
 
     /**
      * @var int 已经收到的队列消息数量
@@ -72,13 +76,13 @@ class Worker extends AbstractWorker
 
     public function run()
     {
-        if ($this->state !== 'shutdown') {
+        if ($this->state !== self::STATE_SHUTDOWN) {
             return;
         }
 
         $this->errorlessEmit('start');
 
-        $this->state = 'running';
+        $this->state = self::STATE_RUNNING;
         while (true) {
             try {
                 $this->process(60);
@@ -136,7 +140,7 @@ class Worker extends AbstractWorker
 
                 end:
                 $this->sendMessage(new Message(MessageTypeEnum::PROCESSED, ''));
-                if ($this->state === 'shutting') {
+                if ($this->state === self::STATE_SHUTTING) {
                     $this->sendMessage(new Message(MessageTypeEnum::STOP_SENDING, ''));
                 }
 
@@ -203,8 +207,8 @@ class Worker extends AbstractWorker
 
     public function shutdown()
     {
-        if ($this->state === 'running') {
-            $this->state = 'shutting';
+        if ($this->state === self::STATE_RUNNING) {
+            $this->state = self::STATE_SHUTTING;
         }
     }
 
