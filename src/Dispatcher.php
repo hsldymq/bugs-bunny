@@ -53,11 +53,6 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
     private $connection;
 
     /**
-     * @var bool
-     */
-    private $disconnecting = false;
-
-    /**
      * @var array
      * [
      *      $workerID => [
@@ -230,14 +225,12 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
      */
     public function shutdown(\Throwable $withError = null)
     {
-        if ($this->state !== self::STATE_RUNNING || $this->disconnecting) {
+        if ($this->state !== self::STATE_RUNNING) {
             return;
         }
 
-        $this->disconnecting = true;
         $this->connection->disconnect()->always(function () use ($withError) {
             $this->state = self::STATE_FLUSHING;
-            $this->disconnecting = false;
             $withError && $this->shutdownError = $withError;
             $this->stopProcess();
         });
