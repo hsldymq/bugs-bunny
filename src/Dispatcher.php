@@ -146,12 +146,6 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
         $this->cachedMessages = new \SplDoublyLinkedList();
         $this->workerScheduler = new WorkerScheduler();
 
-        $this->connection
-            ->connect($this->getEventLoop(), $this)
-            ->then(null, function (\Throwable $reason) {
-                $this->shutdown($reason);
-            });
-
         $this->on('__workerExit', function (string $workerID, int $pid) {
             $this->errorlessEmit('workerExit', [$workerID, $pid]);
             $this->clearWorker($workerID, $pid);
@@ -172,6 +166,12 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
         $this->workersInfo = [];
         $this->idMap = [];
         $this->state = self::STATE_RUNNING;
+
+        $this->connection
+            ->connect($this->getEventLoop(), $this)
+            ->then(null, function (\Throwable $reason) {
+                $this->shutdown($reason);
+            });
 
         while ($this->state === self::STATE_RUNNING) {
             try {
