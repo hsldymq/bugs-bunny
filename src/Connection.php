@@ -127,7 +127,7 @@ class Connection implements AMQPConnectionInterface
 
         $this->eventLoop = $eventLoop;
         $this->handler = $handler;
-        $client = new Client($this->eventLoop, $this->connectionOptions);
+        $client = new BunnyAsyncClient($this->eventLoop, $this->connectionOptions);
         return $client->connect()
             ->then(function (Client $client) {
                 $this->state = self::STATE_CONNECTED;
