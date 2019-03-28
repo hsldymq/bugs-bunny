@@ -153,12 +153,18 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
     }
 
     /**
+     * @param bool $daemonize
+     *
      * @throws \Throwable
      */
-    public function run()
+    public function run(bool $daemonize = false)
     {
         if ($this->state !== self::STATE_SHUTDOWN) {
             return;
+        }
+
+        if ($daemonize) {
+            $this->daemonize();
         }
 
         $this->errorlessEmit('start');
