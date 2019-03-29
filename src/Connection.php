@@ -63,7 +63,7 @@ class Connection implements AMQPConnectionInterface
     private $connectionOptions;
 
     /**
-     * @var Client
+     * @var BunnyAsyncClient
      */
     private $client;
 
@@ -128,6 +128,11 @@ class Connection implements AMQPConnectionInterface
         $this->eventLoop = $eventLoop;
         $this->handler = $handler;
         $client = new BunnyAsyncClient($this->eventLoop, $this->connectionOptions);
+        $client->on('error', function (\Throwable $e) {
+            $this->state = self::STATE_DISCONNECTED;
+            throw $e;
+        });
+
         return $client->connect()
             ->then(function (Client $client) {
                 $this->state = self::STATE_CONNECTED;

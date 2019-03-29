@@ -25,11 +25,9 @@ class BunnyAsyncClient extends Client implements EventEmitterInterface
             parent::onDataAvailable();
         } catch (\Throwable $e) {
             $this->eventLoop->removeReadStream($this->getStream());
-            if (@feof($this->stream)) {
-                $this->state = ClientStateEnum::ERROR;
-            }
-
-            throw $e;
+            $this->eventLoop->futureTick(function () use ($e) {
+                $this->emit('error', [$e, $this]);
+            });
         }
     }
 
@@ -61,11 +59,5 @@ class BunnyAsyncClient extends Client implements EventEmitterInterface
         });
 
         return $deferred->promise();
-    }
-
-    public function isConnected()
-    {
-        $isEof = @feof($this->stream);
-        return parent::isConnected() && !$isEof;
     }
 }
