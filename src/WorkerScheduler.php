@@ -22,14 +22,13 @@ class WorkerScheduler
      * 下标1中为空闲的worker.
      * [
      *      0 => [
-     *          $workerID => (integer),     // self::WORKING 允许调度, self::RETIRED 退休,停止调度
+     *          $workerID => (integer),     // 枚举值: self::WORKING 忙碌中,闲置后允许调度, self::RETIRED 退休,停止调度
      *          ...
      *      ],
      *      1 => [
-     *          $workerID => (integer),     // self::WORKING 允许调度, self::RETIRED 退休,停止调度
+     *          $workerID => (integer),     // 枚举值: self::WORKING 闲置中,允许调度
      *          ...
      *      ],
-     *      ...
      * ]
      */
     private $scheduleLevels = [];
@@ -67,7 +66,7 @@ class WorkerScheduler
      * 将一个worker加入到调度器中.
      *
      * @param string $workerID
-     * @param bool $allocated
+     * @param bool $allocated 是否已经被分配,true时自动将它的分配等级降1
      */
     public function add(string $workerID, bool $allocated = false)
     {
