@@ -1,6 +1,6 @@
 # CHANGELOG
 
-* 0.1.4  (2019-03-28 Asia/Chongqing)
+* 0.1.4  (2019-03-29 Asia/Chongqing)
     * 修复当AMQP服务器主动关闭连接而无法正常退出
 
 * 0.1.3  (2019-03-28 Asia/Chongqing)
