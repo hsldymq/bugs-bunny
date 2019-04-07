@@ -1,8 +1,8 @@
 <h1 align="center">bugs-bunny</h1>
 
-#### 弹性的多进程RabbitMQ Consumer
+# 弹性的多进程RabbitMQ Consumer
 
-###### requirements
+#### requirements
 * PHP >= 7.0
 * ext-pcntl
 * ext-posix
