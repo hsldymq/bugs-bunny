@@ -125,7 +125,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
     private $patrolPeriod = 300;
 
     /**
-     * @var string 运行状态 self::STATE_RUNNING / self::STATE_SHUTTING / self::SHUTDOWN
+     * @var string 运行状态 self::STATE_RUNNING / self::STATE_FLUSHING / self::SHUTDOWN
      */
     private $state = self::STATE_SHUTDOWN;
 
