@@ -137,7 +137,7 @@ class Worker extends AbstractWorker
                 try {
                     call_user_func($this->messageHandler, $queueMsg, $this);
                 } catch (\Throwable $e) {
-                    $this->errorlessEmit('error', ['processingMessage', $cnt]);
+                    $this->errorlessEmit('error', ['processingMessage', $e]);
                 }
 
                 end:
