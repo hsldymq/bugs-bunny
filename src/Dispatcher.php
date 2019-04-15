@@ -356,14 +356,16 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
      * 建议在内存允许的情况下可以适当设大一些.
      *
      * @param int $limit >= 0
+     *
+     * @return self
      */
-    public function setCacheLimit(int $limit)
+    public function setCacheLimit(int $limit): self
     {
-        if ($limit < 0) {
-            return;
+        if ($limit >= 0) {
+            $this->cacheLimit = $limit;
         }
 
-        $this->cacheLimit = $limit;
+        return $this;
     }
 
     /**
