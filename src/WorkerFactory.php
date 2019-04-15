@@ -63,10 +63,14 @@ class WorkerFactory implements WorkerFactoryInterface
      *
      * @param int $signal
      * @param callable $handler
+     *
+     * @return self
      */
-    public function registerSignal(int $signal, callable $handler)
+    public function registerSignal(int $signal, callable $handler): self
     {
         $this->signalHandlers[] = [$signal, $handler];
+
+        return $this;
     }
 
     /**
@@ -74,33 +78,43 @@ class WorkerFactory implements WorkerFactoryInterface
      *
      * @param string $event
      * @param callable $handler
+     *
+     * @return self
      */
-    public function registerEvent(string $event, callable $handler)
+    public function registerEvent(string $event, callable $handler): self
     {
         $this->eventHandlers[] = [$event, $handler];
+
+        return $this;
     }
 
     /**
      * 设置队列消息处理器.
      *
      * @param callable $handler
+     *
+     * @return self
      */
-    public function setMessageHandler(callable $handler)
+    public function setMessageHandler(callable $handler): self
     {
         $this->msgHandler = $handler;
+
+        return $this;
     }
 
     /**
      * 设置worker空闲退出的最大空闲时间(秒).
      *
      * @param int $seconds 必须大于0,否则设置无效
+     *
+     * @return self
      */
-    public function setIdleShutdown(int $seconds)
+    public function setIdleShutdown(int $seconds): self
     {
-        if ($seconds <= 0) {
-            return;
+        if ($seconds > 0) {
+            $this->idleShutdownSec = $seconds;
         }
 
-        $this->idleShutdownSec = $seconds;
+        return $this;
     }
 }
