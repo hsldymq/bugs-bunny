@@ -1,5 +1,8 @@
 # CHANGELOG
 
+* 0.1.5  (2019-04-15 Asia/Chongqing)
+    * 修复emit预定义事件参数错误
+
 * 0.1.4  (2019-03-29 Asia/Chongqing)
     * 修复当AMQP服务器主动关闭连接而无法正常退出
 
