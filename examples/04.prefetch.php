@@ -33,7 +33,7 @@ $factory = (new WorkerFactory())
 
 $params = require __DIR__.'/amqp_params.php';
 $conn = new Connection($params['connectionOptions'], $params['queues']);
-// !!!!!!!!!!就是这里!!!!!!!!!!!!
+// 使用该方法设置prefetch值
 $conn->setPrefetch(10);
 
 $dispatcher = (new Dispatcher($conn, $factory))
