@@ -273,12 +273,16 @@ class Connection implements AMQPConnectionInterface
      * 一般来说不需要设置prefetch数量,prefetch不是瓶颈,worker的处理能力才是.
      *
      * @param int $num
+     *
+     * @return self
      */
-    public function setPrefetch(int $num)
+    public function setPrefetch(int $num): self
     {
         if ($num > 0) {
             $this->numPrefetch = $num;
         }
+
+        return $this;
     }
 
     /**
