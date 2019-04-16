@@ -28,7 +28,7 @@ Bugs Bunny是一个弹性的多进程RabbitMQ消费者库,它基于[bunny/bunny]
 
 其实这些问题你都不用再关心, Bugs Bunny就是为了解决这些问题.
 
-### 它通过什么方式来解决这些问题?
+### 如何解决的?
 不同于常见的阻塞方案,Bugs Bunny使用master/worker进程的方式,master进程(也叫做dispatcher)负责消费,调度worker进程,并将消息分配给worker进程,worker则只负责处理消息.
 
 dispatcher连接到AMQP服务器,创建的worker进程也通过socket pair进行进程间通讯,所有连接的文件描述符都通过reachphp/event-loop库进行IO复用
