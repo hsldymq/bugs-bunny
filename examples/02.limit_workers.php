@@ -48,8 +48,9 @@ $dispatcher = (new Dispatcher($conn, $factory))
         $stat = $dispatcher->getStat();
         $processed = $stat['processed'];
         $consumed = $stat['consumed'];
+        $memory = number_format(memory_get_usage());
 
-        echo "{$processed}/{$consumed} - Worker {$workerID} Has Processed A Message, Workers:{$dispatcher->countWorkers()}, Idle:{$dispatcher->countSchedulable()}.\n";
+        echo "{$processed}/{$consumed} Worker {$workerID} Has Processed A Message, Workers:{$dispatcher->countWorkers()}, Memory Usage:{$memory} Bytes.\n";
     })
     ->on('workerExit', function (string $workerID, int $pid, Dispatcher $dispatcher) {
         $count = $dispatcher->countWorkers();
