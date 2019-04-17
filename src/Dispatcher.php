@@ -269,6 +269,10 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                 }
                 break;
             case MessageTypeEnum::KILL_ME:
+                // 这里使用SIGKILL而不是让worker自己退出
+                // 这是因为对于使用grpc扩展的应用,在1.20以下版本,或者1.20以上但未开启grpc.enable_fork_support设置,会导致fork出来的worker进程无法正常关闭
+                // 所以通过发送信号来杀死进程
+                // dispatcher收到worker发来的kill me消息后,可以确保worker已经做完了所有工作. 那么杀死进程是安全的.
                 $this->killWorker($workerID, SIGKILL);
                 break;
             default:
