@@ -1,5 +1,10 @@
 # CHANGELOG
 
+* 0.1.6  (2019-04-21 Asia/Chongqing)
+    * 修复worker数量峰值统计逻辑错误
+    * 修复shutdown阶段,偶现通知worker退出时死循环
+    * 增加worker进程结束的两种模式(主动/被动)
+
 * 0.1.5  (2019-04-15 Asia/Chongqing)
     * 修复emit预定义事件参数错误
 
