@@ -214,13 +214,13 @@ class Worker extends AbstractWorker
     }
 
     /**
-     * 设置是否被动关闭进程.
+     * 设置进程关闭模式.
      *
-     * @param bool $isPassive
+     * @param bool $isPassive true:被动模式, false:主动模式
      *
      * @return self
      */
-    public function setPassiveShutdown(bool $isPassive): self
+    public function setShutdownMode(bool $isPassive): self
     {
         $this->passiveShutdown = $isPassive;
 
