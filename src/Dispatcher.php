@@ -98,6 +98,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
      * [
      *      'consumed' => (int),            // 消费了的消息总数
      *      'processed' => (int),           // 处理了的消息总数
+     *      'maxMessageLength' => (int),    // 最大消息大小(字节)
      *      'peakNumWorkers' => (int),      // worker数量峰值
      *      'peakNumCached' => (int),       // 缓存消息数量峰值
      * ]
@@ -105,6 +106,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
     private $stat = [
         'consumed' => 0,
         'processed' => 0,
+        'maxMessageLength' => 0,
         'peakNumWorkers' => 0,
         'peakNumCached' => 0,
     ];
@@ -283,6 +285,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
         Client $client
     ) {
         $reachedBefore = $this->limitReached();
+        $this->stat['maxMessageLength'] = max(strlen($AMQPMessage->content), $this->stat['maxMessageLength']);
         $message = [
             'messageID' => Helper::uuid(),
             'meta' => [
@@ -397,6 +400,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
         $this->stat = [
             'consumed' => 0,
             'processed' => 0,
+            'maxMessageLength' => 0,
             'peakNumWorkers' => 0,
             'peakNumCached' => 0,
         ];
