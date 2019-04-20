@@ -195,25 +195,11 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
             }
         }
 
-        // 将剩余缓存的消息派发给worker处理
-        while ($this->state === self::STATE_FLUSHING && count($this->cachedMessages) > 0) {
-            while (!$this->limitReached()) {
-                $this->tryDispatchCached();
-            }
+        // 将剩余的缓存消息都处理完
+        $this->flushCached();
 
-            $this->process(0.1);
-        }
-
-        // 通知所有worker退出
+        // 使所有worker都退出
         $this->informWorkersQuit();
-        do {
-            if ($this->countWorkers() === 0) {
-                $this->state = self::STATE_SHUTDOWN;
-                break;
-            }
-
-            $this->process(0.1);
-        } while (true);
 
         $this->errorlessEmit('shutdown');
 
@@ -244,6 +230,8 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
     /**
      * @param string $workerID
      * @param Message $message
+     *
+     * @throws
      */
     public function onMessage(string $workerID, Message $message)
     {
@@ -261,6 +249,8 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                 $this->tryDispatchCached();
                 break;
             case MessageTypeEnum::STOP_SENDING:
+                // worker主动告知不再希望收到更多队列消息
+                // 这时会启动worker关闭沟通流程
                 $this->workerScheduler->retire($workerID);
                 try {
                     $this->sendLastMessage($workerID);
@@ -268,11 +258,17 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                     $this->errorlessEmit('error', ['sendingMessage', $e]);
                 }
                 break;
+            case MessageTypeEnum::I_AM_QUIT:
+                // 正常的worker关闭流程总是以dispatcher发送一个类型为LAST_MSG的消息开始
+                // worker关闭有主动和被动关闭两种模式
+                // 对于主动关闭模式,worker收到LAST_MSG,会返回I_AM_QUIT消息通知即将退出
+                // dispatcher收到会发送ROGER_THAT告知已准备好worker的退出
+                $this->sendMessage($workerID, new Message(MessageTypeEnum::ROGER_THAT, ''));
+                break;
             case MessageTypeEnum::KILL_ME:
-                // 这里使用SIGKILL而不是让worker自己退出
-                // 这是因为对于使用grpc扩展的应用,在1.20以下版本,或者1.20以上但未开启grpc.enable_fork_support设置,会导致fork出来的worker进程无法正常关闭
-                // 所以通过发送信号来杀死进程
-                // dispatcher收到worker发来的kill me消息后,可以确保worker已经做完了所有工作. 那么杀死进程是安全的.
+                // 对于被动关闭模式,worker收到LAST_MSG,会返回KILL_ME消息让dispatcher杀死自己
+                // 存在这种模式是因为对于一些扩展(例如grpc 1.20以下的版本),fork出的子进程无法正常退出,只有通过信号来杀死
+                // 收到KILL_ME消息代表了worker已经做完了所有工作,所以杀死进程是安全的.
                 $this->killWorker($workerID, SIGKILL);
                 break;
             default:
@@ -296,8 +292,6 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                     'routingKey' => $AMQPMessage->routingKey,
                     'headers' => $AMQPMessage->headers,
                 ],
-                'sent' => -1,       // 在dispatch的时候会填上准确的值,它代表已经向该worker派发了多少条队列消息
-                                    // 用于worker退出阶段处理掉剩余的消息
             ],
             'content' => $AMQPMessage->content,
         ];
@@ -458,7 +452,6 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
     {
         $workerID = $this->scheduleWorker();
 
-        $message['meta']['sent'] = $this->workersInfo[$workerID]['sent'] + 1;
         try {
             $this->sendMessage($workerID, new Message(MessageTypeEnum::QUEUE, json_encode($message)));
         } catch (\Throwable $e) {
@@ -540,16 +533,36 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
         return $workerID;
     }
 
+    /**
+     * @param string $workerID
+     *
+     * @throws
+     */
     private function sendLastMessage(string $workerID)
     {
-        $this->sendMessage($workerID, new Message(MessageTypeEnum::LAST_MSG, json_encode([
-            'messageID' => Helper::uuid(),
-            'meta' => ['sent' => $this->workersInfo[$workerID]['sent']],
-        ])));
+        $this->sendMessage($workerID, new Message(MessageTypeEnum::LAST_MSG, ''));
     }
 
     /**
-     * 通知worker退出.
+     * 处理掉剩余的缓存消息.
+     *
+     * @throws
+     */
+    private function flushCached()
+    {
+        while ($this->state === self::STATE_FLUSHING && count($this->cachedMessages) > 0) {
+            while (!$this->limitReached()) {
+                $this->tryDispatchCached();
+            }
+
+            $this->process(0.1);
+        }
+    }
+
+    /**
+     * 通知并确保所有worker退出.
+     *
+     * @throws
      */
     private function informWorkersQuit()
     {
@@ -561,5 +574,17 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                 $this->errorlessEmit('error', ['shuttingDown', $e]);
             }
         }
+
+        do {
+            if ($this->countWorkers() === 0) {
+                $this->state = self::STATE_SHUTDOWN;
+                break;
+            }
+
+            $this->process(0.1);
+            while (($pid = pcntl_wait($status, WNOHANG)) > 0) {
+                $this->clearWorker($this->idMap[$pid] ?? '', $pid);
+            }
+        } while (true);
     }
 }
