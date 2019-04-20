@@ -130,6 +130,9 @@ class WorkerFactory implements WorkerFactoryInterface
     /**
      * 设置worker关闭为被动关闭模式还是主动关闭模式.
      *
+     * 主动关闭是指worker进程结束事件循环,退出主逻辑最后脚本结束
+     * 被动关闭是指worker告知dispatcher让其通过信号杀死自己
+     *
      * 默认是主动关闭模式
      * 由于使用grpc 1.20以下版本的扩展时,fork的子进程无法正常结束,这里提供了一种被动关闭机制来防止这种情况方式.
      *
