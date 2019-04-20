@@ -7,7 +7,7 @@ class WorkerSchedulerTest extends TestCase
 {
     public function testAddWorker()
     {
-        $scheduler1 = new WorkerScheduler(1);
+        $scheduler1 = new WorkerScheduler();
 
         $scheduler1->add('a');
         $this->assertCountWorker(1, 0, 0, $scheduler1);
@@ -26,7 +26,7 @@ class WorkerSchedulerTest extends TestCase
         $this->assertCountWorker(3, 0, 1, $scheduler1);
         $this->assertHardCountWorker(3, 0, 1, $scheduler1);
 
-        $scheduler2 = new WorkerScheduler(2);
+        $scheduler2 = (new WorkerScheduler())->changeLevels(2);
         $scheduler2->add('e', true);
         $this->assertCountWorker(1, 0, 0, $scheduler2);
         $this->assertHardCountWorker(1, 0, 0, $scheduler2);
@@ -37,7 +37,7 @@ class WorkerSchedulerTest extends TestCase
      */
     public function testRemoveWorker()
     {
-        $scheduler = new WorkerScheduler(1);
+        $scheduler = new WorkerScheduler();
 
         $scheduler->add('a');
         $scheduler->add('b');
@@ -66,7 +66,7 @@ class WorkerSchedulerTest extends TestCase
      */
     public function testRetireWorker()
     {
-        $scheduler = new WorkerScheduler(1);
+        $scheduler = new WorkerScheduler(0);
         $scheduler->add('a');
         $scheduler->add('b');
 
@@ -97,7 +97,7 @@ class WorkerSchedulerTest extends TestCase
      */
     public function testCombineBasicOperations()
     {
-        $scheduler = new WorkerScheduler(5);
+        $scheduler = (new WorkerScheduler())->changeLevels(5);
         $scheduler->add('a');
         $scheduler->add('b');
         $scheduler->add('c');
@@ -117,7 +117,7 @@ class WorkerSchedulerTest extends TestCase
      */
     public function testAllocate()
     {
-        $scheduler = new WorkerScheduler(2);
+        $scheduler = (new WorkerScheduler())->changeLevels(2);
         $scheduler->add('a');
         $scheduler->add('b');
         $scheduler->add('c');
@@ -151,7 +151,7 @@ class WorkerSchedulerTest extends TestCase
      */
     public function testRelease()
     {
-        $scheduler = new WorkerScheduler(2);
+        $scheduler = (new WorkerScheduler())->changeLevels(2);
         $scheduler->add('a');
         $scheduler->add('b');
         $scheduler->add('c');
@@ -198,7 +198,7 @@ class WorkerSchedulerTest extends TestCase
 
     public function testChangeLevelHigher()
     {
-        $scheduler = new WorkerScheduler(2);
+        $scheduler = (new WorkerScheduler())->changeLevels(2);
         $scheduler->add('a');       // a:2
         $scheduler->add('b');       // b:2
         $scheduler->add('c');       // c:2
@@ -226,7 +226,7 @@ class WorkerSchedulerTest extends TestCase
 
     public function testChangeLevelLower()
     {
-        $scheduler = new WorkerScheduler(6);
+        $scheduler = (new WorkerScheduler())->changeLevels(6);
         $scheduler->add('a');       // a:6
         $scheduler->add('b');       // b:6
         $scheduler->add('c');       // c:6

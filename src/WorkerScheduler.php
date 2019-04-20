@@ -276,18 +276,20 @@ class WorkerScheduler
      * 更小时,原来不忙碌的worker可能就会处于忙碌状态,可以调度的worker就变少了.
      *
      * @param int $newLevelNum
+     *
+     * @return self
      */
-    private function changeLevels(int $newLevelNum)
+    public function changeLevels(int $newLevelNum): self
     {
         $oldLevelNum = count($this->scheduleLevels);
         if ($oldLevelNum === $newLevelNum + 1 || $newLevelNum <= 0) {
-            return;
+            return $this;
         }
 
         $newScheduleLevels = array_fill(0, $newLevelNum + 1, []);
         if ($oldLevelNum === 0) {
             $this->scheduleLevels = $newScheduleLevels;
-            return;
+            return $this;
         }
 
         $diff = $newLevelNum + 1 - $oldLevelNum;
@@ -315,5 +317,7 @@ class WorkerScheduler
             }
         }
         $this->scheduleLevels = $newScheduleLevels;
+
+        return $this;
     }
 }
