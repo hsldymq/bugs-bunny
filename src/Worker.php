@@ -69,6 +69,11 @@ class Worker extends AbstractWorker
      */
     private $shutdownTimer = null;
 
+    /**
+     * @var bool 是否被动关闭(被动关闭是指由dispatcher杀死worker进程)
+     */
+    private $passiveShutdown = false;
+
     public function __construct(string $id, $socketFD)
     {
         parent::__construct($id, $socketFD);
@@ -85,7 +90,7 @@ class Worker extends AbstractWorker
         $this->errorlessEmit('start');
 
         $this->state = self::STATE_RUNNING;
-        while (true) {
+        while ($this->state !== self::STATE_SHUTDOWN) {
             try {
                 $this->process(60);
             } catch (\Throwable $e) {
@@ -100,24 +105,16 @@ class Worker extends AbstractWorker
         }
     }
 
+    /**
+     * @param Message $msg
+     *
+     * @throws
+     */
     public function handleMessage(Message $msg)
     {
         $this->clearShutdownTimer();
 
-        $msgType = $msg->getType();
-        $cnt = $msg->getContent();
-
-        if (in_array($msgType, [MessageTypeEnum::QUEUE, MessageTypeEnum::LAST_MSG])) {
-            try {
-                $decodedMsg = $this->decodeMessage($cnt);
-            } catch (\Throwable $e) {
-                $this->errorlessEmit('error', ['decodingMessage', $e]);
-                $this->trySetShutdownTimer();
-                return;
-            }
-        }
-
-        switch ($msgType) {
+        switch ($msg->getType()) {
             case MessageTypeEnum::QUEUE:
                 $this->received++;
 
@@ -126,8 +123,9 @@ class Worker extends AbstractWorker
                 }
 
                 try {
-                    $info = $decodedMsg['meta']['amqp'] ?? [];
-                    $info['content'] = $decodedMsg['content'] ?? '';
+                    $decoded = $this->decodeMessage($msg->getContent());
+                    $info = $decoded['meta']['amqp'] ?? [];
+                    $info['content'] = $decoded['content'] ?? '';
                     $queueMsg = new QueueMessage($info);
                 } catch (\Throwable $e) {
                     $this->errorlessEmit('error', ['decodingMessage', $e]);
@@ -150,15 +148,23 @@ class Worker extends AbstractWorker
             case MessageTypeEnum::LAST_MSG:
                 $this->noMore = true;
                 break;
+            case MessageTypeEnum::ROGER_THAT:
+                $this->state = self::STATE_SHUTDOWN;
+                $this->stopProcess();
+                $this->trySetShutdownTimer();
+                return;
             default:
                 $this->errorlessEmit('message', [$msg]);
         }
 
         $this->trySetShutdownTimer();
 
-        $sent = $decodedMsg['meta']['sent'] ?? null;
-        if ($this->noMore && $this->received === $sent) {
-            $this->sendMessage(new Message(MessageTypeEnum::KILL_ME, ''));
+        if ($this->noMore) {
+            if ($this->passiveShutdown) {
+                $this->sendMessage(new Message(MessageTypeEnum::KILL_ME, ''));
+            } else {
+                $this->sendMessage(new Message(MessageTypeEnum::I_AM_QUIT, ''));
+            }
         }
     }
 
@@ -205,6 +211,20 @@ class Worker extends AbstractWorker
     public function getReceivedNum(): int
     {
         return $this->received;
+    }
+
+    /**
+     * 设置是否被动关闭进程.
+     *
+     * @param bool $isPassive
+     *
+     * @return self
+     */
+    public function setPassiveShutdown(bool $isPassive): self
+    {
+        $this->passiveShutdown = $isPassive;
+
+        return $this;
     }
 
     public function shutdown()
