@@ -81,8 +81,7 @@ class WorkerScheduler
         } else {
             $level = count($this->scheduleLevels) - 1;
         }
-        $this->scheduleLevels[$level][$workerID] = self::WORKING;
-        $this->levelMap[$workerID] = $level;
+        $this->setWorkerLevel($workerID, $level, self::WORKING);
         $this->increase('working');
         if ($level === 0) {
             $this->increase('busy');
@@ -126,16 +125,12 @@ class WorkerScheduler
 
         $state = $this->scheduleLevels[$level][$workerID];
         if ($state !== self::RETIRED) {
-            $this->levelMap[$workerID] = 0;
-            $this->scheduleLevels[0][$workerID] = self::RETIRED;
-
+            $this->setWorkerLevel($workerID, 0, self::RETIRED, $level);
             $this->increase('retired');
             $this->decrease('working');
             if ($level === 0) {
                 $this->decrease('busy');
             }
-
-            unset($this->scheduleLevels[$level][$workerID]);
         }
     }
 
@@ -159,10 +154,7 @@ class WorkerScheduler
                     $workerID = key($this->scheduleLevels[$i]);
 
                     // 讲worker的调度等级降低一级
-                    $this->scheduleLevels[$i - 1][$workerID] = $state;
-                    $this->levelMap[$workerID] = $i - 1;
-                    unset($this->scheduleLevels[$i][$workerID]);
-
+                    $this->setWorkerLevel($workerID, $i - 1, self::WORKING, $i);
                     if ($i - 1 === 0) {
                         $this->increase('busy');
                     }
@@ -195,10 +187,7 @@ class WorkerScheduler
             return;
         }
 
-        $this->scheduleLevels[$newLevel][$workerID] = true;
-        $this->levelMap[$workerID] = $newLevel;
-        unset($this->scheduleLevels[$level][$workerID]);
-
+        $this->setWorkerLevel($workerID, $newLevel, self::WORKING, $level);
         if ($level === 0) {
             $this->decrease('busy');
         }
@@ -236,36 +225,6 @@ class WorkerScheduler
     public function countRetired(): int
     {
         return $this->retiredNum;
-    }
-
-    private function increase(string $which)
-    {
-        switch ($which) {
-            case 'working':
-                $this->workingNum++;
-                break;
-            case 'busy':
-                $this->busyNum++;
-                break;
-            case 'retired':
-                $this->retiredNum++;
-                break;
-        }
-    }
-
-    private function decrease(string $which)
-    {
-        switch ($which) {
-            case 'working':
-                $this->workingNum--;
-                break;
-            case 'busy':
-                $this->busyNum--;
-                break;
-            case 'retired':
-                $this->retiredNum--;
-                break;
-        }
     }
 
     /**
@@ -317,6 +276,55 @@ class WorkerScheduler
             }
         }
         $this->scheduleLevels = $newScheduleLevels;
+
+        return $this;
+    }
+
+    private function increase(string $which)
+    {
+        switch ($which) {
+            case 'working':
+                $this->workingNum++;
+                break;
+            case 'busy':
+                $this->busyNum++;
+                break;
+            case 'retired':
+                $this->retiredNum++;
+                break;
+        }
+    }
+
+    private function decrease(string $which)
+    {
+        switch ($which) {
+            case 'working':
+                $this->workingNum--;
+                break;
+            case 'busy':
+                $this->busyNum--;
+                break;
+            case 'retired':
+                $this->retiredNum--;
+                break;
+        }
+    }
+
+    /**
+     * @param string $workerID
+     * @param int $newLevel
+     * @param int $state
+     * @param int|null $oldLevel
+     *
+     * @return WorkerScheduler
+     */
+    private function setWorkerLevel(string $workerID, int $newLevel, int $state, int $oldLevel = null): self
+    {
+        $this->scheduleLevels[$newLevel][$workerID] = $state;
+        $this->levelMap[$workerID] = $newLevel;
+        if ($oldLevel !== null && $newLevel !== $oldLevel) {
+            unset($this->scheduleLevels[$oldLevel][$workerID]);
+        }
 
         return $this;
     }
