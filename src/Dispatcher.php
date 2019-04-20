@@ -523,7 +523,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                 $this->errorlessEmit('error', ['creatingWorker', $e]);
                 throw $e;
             }
-            $this->stat['peakNumWorkers'] = max($this->countWorkers(), $this->stat['peakNumWorkers'] + 1);
+            $this->stat['peakNumWorkers'] = max($this->countWorkers(), $this->stat['peakNumWorkers']);
 
             $pid = $this->getWorkerPID($workerID);
             $this->workerScheduler->add($workerID, true);
