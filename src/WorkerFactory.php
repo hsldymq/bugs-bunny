@@ -35,6 +35,11 @@ class WorkerFactory implements WorkerFactoryInterface
      */
     private $idleShutdownSec = null;
 
+    /**
+     * @var null|bool
+     */
+    private $isPassiveShutdown = null;
+
     public function makeWorker(string $id, $socketFD): AbstractWorker
     {
         $worker = new Worker($id, $socketFD);
@@ -53,6 +58,10 @@ class WorkerFactory implements WorkerFactoryInterface
 
         if ($this->idleShutdownSec !== null) {
             $worker->setIdleShutdown($this->idleShutdownSec);
+        }
+
+        if ($this->isPassiveShutdown !== null) {
+            $worker->setShutdownMode($this->isPassiveShutdown);
         }
 
         return $worker;
@@ -114,6 +123,23 @@ class WorkerFactory implements WorkerFactoryInterface
         if ($seconds > 0) {
             $this->idleShutdownSec = $seconds;
         }
+
+        return $this;
+    }
+
+    /**
+     * 设置worker关闭为被动关闭模式还是主动关闭模式.
+     *
+     * 默认是主动关闭模式
+     * 由于使用grpc 1.20以下版本的扩展时,fork的子进程无法正常结束,这里提供了一种被动关闭机制来防止这种情况方式.
+     *
+     * @param bool $isPassive
+     *
+     * @return WorkerFactory
+     */
+    public function setShutdownMode(bool $isPassive): self
+    {
+        $this->isPassiveShutdown = $isPassive;
 
         return $this;
     }
