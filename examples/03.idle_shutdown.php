@@ -69,11 +69,12 @@ $dispatcher = (new Dispatcher($conn, $factory))
     ->on('shutdown', function (Dispatcher $dispatcher) {
         $stat = $dispatcher->getStat();
         echo "\n";
-        echo "Consumed Message: {$stat['consumed']}\n";
-        echo "Processed Message: {$stat['processed']}\n";
-        echo "Peak Number Of Workers: {$stat['peakNumWorkers']}\n";
-        echo "Peak Number Of Cached Messages: {$stat['peakNumCached']}\n";
-        echo "Peak Memory Usage: ".number_format(memory_get_peak_usage()).' Bytes'.PHP_EOL;
+        echo "Consumed Message: {$stat['consumed']}.\n";
+        echo "Processed Message: {$stat['processed']}.\n";
+        echo "Max Queue Message Length: {$stat['maxMessageLength']} Bytes.\n";
+        echo "Peak Number Of Workers: {$stat['peakNumWorkers']}.\n";
+        echo "Peak Number Of Cached Messages: {$stat['peakNumCached']}.\n";
+        echo "Peak Memory Usage: ".number_format(memory_get_peak_usage()).' Bytes.'.PHP_EOL;
     });
 $dispatcher->addSignalHandler(SIGINT, function () use ($dispatcher) {
     $dispatcher->shutdown();
