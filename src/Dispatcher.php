@@ -263,8 +263,9 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                 break;
             case MessageTypeEnum::KILL_ME:
                 // 对于被动关闭模式,worker收到LAST_MSG,会返回KILL_ME消息让dispatcher杀死自己
-                // 存在这种模式是因为对于一些扩展(例如grpc 1.20以下的版本),fork出的子进程无法正常退出,只有通过信号来杀死
-                // 收到KILL_ME消息代表了worker已经做完了所有工作,所以杀死进程是安全的.
+                // 对于grpc扩展 1.20以下的版本,fork出的子进程无法正常退出,只有通过信号来杀死
+                // 并且无法保证其他扩展是否也有这个问题, 这是这种模式存在的原因.
+                // 当dispatcher收到KILL_ME消息代表了worker已经做完了所有工作,所以杀死进程是安全的.
                 $this->killWorker($workerID, SIGKILL);
                 break;
             default:
