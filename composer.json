@@ -1,5 +1,6 @@
 {
   "name": "hsldymq/bugs-bunny",
+  "license": "MIT",
   "require": {
     "php": ">=7.0.0",
     "bunny/bunny": "^0.4.1",
