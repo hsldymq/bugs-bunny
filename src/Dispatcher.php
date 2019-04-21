@@ -188,13 +188,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
             $this->errorlessEmit('patrolling');
 
             // 补杀僵尸进程
-            for ($i = 0, $len = count($this->idMap); $i < $len; $i++) {
-                $pid = pcntl_wait($status, WNOHANG);
-                if ($pid <= 0) {
-                    break;
-                }
-                $this->clearWorker($this->idMap[$pid] ?? '', $pid);
-            }
+            $this->waitChildren();
         }
 
         // 将剩余的缓存消息都处理完
@@ -586,9 +580,14 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
             }
 
             $this->process(0.1);
-            while (($pid = pcntl_wait($status, WNOHANG)) > 0) {
-                $this->clearWorker($this->idMap[$pid] ?? '', $pid);
-            }
+            $this->waitChildren();
         } while (true);
+    }
+
+    private function waitChildren()
+    {
+        while (($pid = pcntl_wait($status, WNOHANG)) > 0) {
+            $this->clearWorker($this->idMap[$pid] ?? '', $pid);
+        }
     }
 }
