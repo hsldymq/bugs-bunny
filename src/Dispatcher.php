@@ -587,12 +587,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
 
     private function waitChildren()
     {
-        $numWorkers = count($this->getWorkerIDs());
-        for ($i = 0; $i < $numWorkers; $i++) {
-            $pid = pcntl_wait($status, WNOHANG);
-            if ($pid <= 0) {
-                break;
-            }
+        while (($pid = pcntl_wait($status, WNOHANG)) > 0) {
             $this->clearWorker($this->idMap[$pid] ?? '', $pid);
         }
     }
