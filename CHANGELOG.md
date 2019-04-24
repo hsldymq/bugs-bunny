@@ -1,5 +1,8 @@
 # CHANGELOG
 
+* 0.1.7  (2019-04-24 Asia/Chongqing)
+    * 修复重名bug,这个bug在个别版本下会出现fatal error: "Cannot use Evenement\EventEmitterTrait as EventEmitterTrait because the name is already in use"
+
 * 0.1.6  (2019-04-21 Asia/Chongqing)
     * 修复worker数量峰值统计逻辑错误
     * 修复shutdown阶段,偶现通知worker退出时死循环
