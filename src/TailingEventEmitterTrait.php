@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Archman\BugsBunny;
 
-trait EventEmitterTrait
+trait TailingEventEmitterTrait
 {
     public function emit($event, array $arguments = [])
     {

@@ -43,7 +43,7 @@ use React\Promise\Promise;
  */
 class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
 {
-    use EventEmitterTrait;
+    use TailingEventEmitterTrait;
 
     const STATE_RUNNING = 1;
     const STATE_FLUSHING = 2;

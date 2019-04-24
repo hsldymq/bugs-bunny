@@ -28,7 +28,7 @@ use React\EventLoop\TimerInterface;
  */
 class Worker extends AbstractWorker
 {
-    use EventEmitterTrait;
+    use TailingEventEmitterTrait;
 
     const STATE_RUNNING = 1;
     const STATE_SHUTTING = 2;
