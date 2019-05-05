@@ -554,7 +554,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                 $this->tryDispatchCached();
             }
 
-            $this->process(0.1);
+            $this->process(0.5);
         }
     }
 
@@ -580,7 +580,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                 break;
             }
 
-            $this->process(0.1);
+            $this->process(0.5);
             $this->waitChildren();
         } while (true);
     }
