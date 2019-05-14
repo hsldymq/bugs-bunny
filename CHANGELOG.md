@@ -1,5 +1,8 @@
 # CHANGELOG
 
+* 0.1.8  (2019-05-14 Asia/Chongqing)
+    * 对dispatcher退出阶段进行超时检测,防止无限等待
+
 * 0.1.7  (2019-04-24 Asia/Chongqing)
     * 修复重名bug,这个bug在个别版本下会出现fatal error: "Cannot use Evenement\EventEmitterTrait as EventEmitterTrait because the name is already in use"
 
