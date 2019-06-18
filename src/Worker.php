@@ -74,6 +74,16 @@ class Worker extends AbstractWorker
      */
     private $passiveShutdown = false;
 
+    /** @var callable */
+    private $delayCondition = null;
+
+    /**
+     * @var array [
+     *      $id => (array)
+     * ]
+     */
+    private $delayHandledMessages = [];
+
     public function __construct(string $id, $socketFD)
     {
         parent::__construct($id, $socketFD);
@@ -119,7 +129,7 @@ class Worker extends AbstractWorker
                 $this->received++;
 
                 if (!$this->messageHandler) {
-                    goto end;
+                    goto processd;
                 }
 
                 try {
@@ -129,6 +139,16 @@ class Worker extends AbstractWorker
                     $queueMsg = new QueueMessage($info);
                 } catch (\Throwable $e) {
                     $this->errorlessEmit('error', ['decodingMessage', $e]);
+                    goto processd;
+                }
+
+                try {
+                    $delayed = $this->tryDelayHandle($decoded['messageID'], $queueMsg);
+                } catch (\Throwable $e) {
+                    $this->errorlessEmit('error', ['tryingDelayHandle', $e]);
+                }
+                if ($delayed ?? false) {
+                    $this->sendMessage(new Message(MessageTypeEnum::ACCEPT, 'delayed'));
                     goto end;
                 }
 
@@ -138,8 +158,9 @@ class Worker extends AbstractWorker
                     $this->errorlessEmit('error', ['processingMessage', $e]);
                 }
 
+                processd:
+                $this->sendMessage(new Message(MessageTypeEnum::PROCESSED, 'normal'));
                 end:
-                $this->sendMessage(new Message(MessageTypeEnum::PROCESSED, ''));
                 if ($this->state === self::STATE_SHUTTING) {
                     $this->sendMessage(new Message(MessageTypeEnum::STOP_SENDING, ''));
                 }
@@ -158,14 +179,7 @@ class Worker extends AbstractWorker
         }
 
         $this->trySetShutdownTimer();
-
-        if ($this->noMore) {
-            if ($this->passiveShutdown) {
-                $this->sendMessage(new Message(MessageTypeEnum::KILL_ME, ''));
-            } else {
-                $this->sendMessage(new Message(MessageTypeEnum::I_AM_QUIT, ''));
-            }
-        }
+        $this->tryTerminate();
     }
 
     /**
@@ -191,6 +205,13 @@ class Worker extends AbstractWorker
         $this->idleShutdown = false;
         $this->idleShutdownSec = 0;
         $this->clearShutdownTimer();
+    }
+
+    public function setDelayCondition(callable $func)
+    {
+        $this->delayCondition = $func;
+
+        return $this;
     }
 
     /**
@@ -241,9 +262,73 @@ class Worker extends AbstractWorker
         } finally {}
     }
 
+    public function hasMoreDelayed(): bool
+    {
+        return count($this->delayHandledMessages) > 0;
+    }
+
+    /**
+     * @param string $messageID
+     * @param QueueMessage $msg
+     *
+     * @return bool
+     */
+    private function tryDelayHandle(string $messageID, QueueMessage $msg): bool
+    {
+        if (!is_callable($this->delayCondition)) {
+           return false;
+        }
+
+        $delayMs = call_user_func($this->delayCondition, $msg);
+        if ($delayMs <= 0) {
+            return false;
+        }
+
+        $this->delayHandledMessages[$messageID] = $msg;
+        $this->addTimer($delayMs / 1000, false, function () use ($messageID) {
+            if (!isset($this->delayHandledMessages[$messageID]) || !is_callable($this->messageHandler)) {
+                goto delay_handle_end;
+            }
+
+            $msg = $this->delayHandledMessages[$messageID];
+            try {
+                call_user_func($this->messageHandler, $msg, $this);
+            } catch (\Throwable $e) {
+                $this->errorlessEmit('error', ['processingMessage', $e]);
+            } finally {
+                unset($this->delayHandledMessages[$messageID]);
+            }
+
+            delay_handle_end:
+            $this->sendMessage(new Message(MessageTypeEnum::PROCESSED, 'delayed'));
+            if ($this->state === self::STATE_SHUTTING) {
+                $this->sendMessage(new Message(MessageTypeEnum::STOP_SENDING, ''));
+            }
+
+            $this->trySetShutdownTimer();
+            $this->tryTerminate();
+        });
+
+        return true;
+    }
+
+    /**
+     * @throws
+     */
+    private function tryTerminate()
+    {
+        if ($this->noMore && !$this->hasMoreDelayed()) {
+            if ($this->passiveShutdown) {
+                $this->sendMessage(new Message(MessageTypeEnum::KILL_ME, ''));
+            } else {
+                $this->sendMessage(new Message(MessageTypeEnum::I_AM_QUIT, ''));
+            }
+        }
+    }
+
     private function trySetShutdownTimer()
     {
-        if (!$this->idleShutdown || $this->shutdownTimer) {
+        if (!$this->idleShutdown || $this->shutdownTimer || $this->hasMoreDelayed()) {
             return;
         }
 
