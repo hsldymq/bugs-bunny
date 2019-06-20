@@ -588,11 +588,11 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
      */
     private function informWorkersQuit()
     {
-        $startInformTime = time();
+        $startInformTime = $now = time();
         $informCount = 0;
         do {
             // 每10秒进行一次通知
-            if ((time() - $startInformTime) / 10 >= $informCount) {
+            if (($now - $startInformTime) / 10 >= $informCount) {
                 $informCount++;
                 foreach ($this->workersInfo as $workerID => $each) {
                     try {
@@ -611,8 +611,9 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
 
             $this->process(0.5);
             $this->waitChildren();
+            $now = time();
             // 防止子进程无响应,这里循环一定时间后直接退出
-        } while ((time() - $startInformTime) < $this->shutdownTimeoutSec);
+        } while (($now - $startInformTime) < $this->shutdownTimeoutSec);
     }
 
     private function waitChildren()
