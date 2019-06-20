@@ -21,6 +21,9 @@ use React\Promise\Promise;
  *
  * @event patrolling    进行一次僵尸进程检查周期
  *
+ * @event received      从消息队列收到一条消息
+ *                      参数: array $message, Dispatcher $master
+ *
  * @event processed     一条amqp消息被worker成功处理
  *                      参数: string $workerID, Dispatcher $master
  *
@@ -298,6 +301,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
             ],
             'content' => $AMQPMessage->content,
         ];
+        $this->errorlessEmit('received', [$message]);
 
         if ($reachedBefore) {
             $this->cachedMessages->push($message);
