@@ -18,8 +18,10 @@ use React\Promise\Promise;
 /**
  * 可以使用on方法监听以下预定义事件:
  * @event start         dispatcher启动
+ *                      参数: Dispatcher $master
  *
- * @event patrolling    进行一次僵尸进程检查周期
+ * @event patrolling    进行一次巡逻,巡逻会检查僵尸进程,并给使用者进行定时抽样的能力
+ *                      参数: Dispatcher $master
  *
  * @event consumed      从消息队列消费了一条消息
  *                      参数: array $message, Dispatcher $master
