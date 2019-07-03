@@ -18,28 +18,28 @@ use React\Promise\Promise;
 /**
  * 可以使用on方法监听以下预定义事件:
  * @event start         dispatcher启动
- *                      参数: Dispatcher $master
+ *                      参数: \Archman\BugsBunny\Dispatcher $master
  *
  * @event patrolling    进行一次巡逻,巡逻会检查僵尸进程,并给使用者定时进行抽样的机会
- *                      参数: Dispatcher $master
+ *                      参数: \Archman\BugsBunny\Dispatcher $master
  *
  * @event consumed      从消息队列消费了一条消息
- *                      参数: array $message, Dispatcher $master
+ *                      参数: array $message, \Archman\BugsBunny\Dispatcher $master
  *
  * @event processed     一条队列消息被worker成功处理
- *                      参数: string $workerID, Dispatcher $master
+ *                      参数: string $workerID, \Archman\BugsBunny\Dispatcher $master
  *
  * @event workerExit    worker退出
- *                      参数: string $workerID, int $pid, Dispatcher $master
+ *                      参数: string $workerID, int $pid, \Archman\BugsBunny\Dispatcher $master
  *
  * @event limitReached  worker数量达到上限
  *                      参数: Dispatcher $master
  *
  * @event message       worker发来一条自定义消息
- *                      参数: string $workerID, \Archman\Whisper\Message $msg, Dispatcher $master
+ *                      参数: string $workerID, \Archman\Whisper\Message $msg, \Archman\BugsBunny\Dispatcher $master
  *
  * @event error         出现错误
- *                      参数: string $reason, \Throwable $ex, Dispatcher $master
+ *                      参数: string $reason, \Throwable $ex, \Archman\BugsBunny\Dispatcher $master
  *                      $reason enum:
  *                          'shuttingDown'          程序结束,关闭剩余worker过程中出错
  *                          'dispatchingMessage'    向worker投放amqp消息时出错

@@ -11,19 +11,19 @@ use React\EventLoop\TimerInterface;
 /**
  * 可以使用on方法或在WorkerFactory使用registerEvent方法监听以下预定义事件:
  * @event start             worker启动
- *                          参数: Worker $worker
+ *                          参数: \Archman\BugsBunny\Worker $worker
  *
  * @event patrolling        进行一次巡逻,给使用者定时进行抽样的机会
- *                          参数: Worker $worker
+ *                          参数: \Archman\BugsBunny\Worker $worker
  *
  * @event message           dispatcher发来自定义消息时
- *                          参数: \Archman\Whisper\Message $msg, Worker $worker
+ *                          参数: \Archman\Whisper\Message $msg, \Archman\BugsBunny\Worker $worker
  *
  * @event disconnected      与dispatcher的连接中断,即将退出
  *                          参数: Worker $worker
  *
  * @event error             发生错误
- *                          参数: string $reason, \Throwable $ex, Worker $worker
+ *                          参数: string $reason, \Throwable $ex, \Archman\BugsBunny\Worker $worker
  *                          $reason enum:
  *                              'decodingMessage'       解码非预定义消息时结构错误
  *                              'processingMessage'     使用用户提供的handler处理amqp消息时出错
