@@ -6,6 +6,11 @@
     * worker允许设置patrol间隔周期
     * 支持发送和接受自定义消息
 
+* 0.1.10 (2019-07-03)
+    * 修复bug
+    * worker增加patrolling事件
+    * worker允许设置patrol间隔周期
+
 * 0.1.9 (2019-06-20)
     * dispatcher增加事件
 
