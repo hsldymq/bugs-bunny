@@ -49,6 +49,10 @@ $dispatcher = (new Dispatcher($conn, $factory))
 
         echo "[Custom Message] Worker {$workerID} Has Processed A Message, Workers:{$dispatcher->countWorkers()}, Memory Usage:{$memory} Bytes.\n";
     })
+    // 也可以在dispatcher启动的时候让worker进行一些初始化操作
+    ->on('start', function (Dispatcher $dispatcher) {
+        $dispatcher->dispatchCustomMessage(new Message(101, 'dispatcher started'));
+    })
     ->on('processed', function (string $workerID, Dispatcher $dispatcher) {
         $stat = $dispatcher->getStat();
         $processed = $stat['processed'];
