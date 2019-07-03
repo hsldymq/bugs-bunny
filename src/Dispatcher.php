@@ -268,7 +268,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
             case MessageTypeEnum::I_QUIT:
                 // 正常的worker关闭流程总是以dispatcher发送一个类型为LAST_MSG的消息开始
                 // worker关闭有主动和被动关闭两种模式
-                // 对于主动关闭模式,worker收到LAST_MSG,会返回I_AM_QUIT消息通知即将退出
+                // 对于主动关闭模式,worker收到LAST_MSG,会返回I_QUIT消息通知即将退出
                 // dispatcher收到会发送ROGER_THAT告知已准备好worker的退出
                 $this->sendMessage($workerID, new Message(MessageTypeEnum::ROGER_THAT, ''));
                 break;
