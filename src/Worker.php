@@ -25,9 +25,10 @@ use React\EventLoop\TimerInterface;
  * @event error             发生错误
  *                          参数: string $reason, \Throwable $ex, \Archman\BugsBunny\Worker $worker
  *                          $reason enum:
- *                              'decodingMessage'       解码非预定义消息时结构错误
- *                              'processingMessage'     使用用户提供的handler处理amqp消息时出错
- *                              'unrecoverable'         当出现了不可恢复的错误,即将退出时
+ *                              'decodingMessage'           解码非预定义消息时结构错误
+ *                              'processingMessage'         使用用户提供的handler处理amqp消息时出错
+ *                              'processingCustomMessage'   处理自定义消息出错
+ *                              'unrecoverable'             当出现了不可恢复的错误,即将退出时
  */
 class Worker extends AbstractWorker
 {
@@ -164,7 +165,15 @@ class Worker extends AbstractWorker
                 $this->trySetShutdownTimer();
                 return;
             default:
-                $this->errorlessEmit('message', [$msg]);
+                try {
+                    $this->emit('message', [$msg]);
+                } catch (\Throwable $e) {
+                    $this->errorlessEmit('error', ['processingCustomMessage', $e]);
+                }
+                $this->sendMessage(new Message(MessageTypeEnum::CUSTOM_MESSAGE_PROCESSED, ''));
+                if ($this->state === self::STATE_SHUTTING) {
+                    $this->sendMessage(new Message(MessageTypeEnum::STOP_SENDING, ''));
+                }
         }
 
         $this->trySetShutdownTimer();
@@ -176,6 +185,18 @@ class Worker extends AbstractWorker
                 $this->sendMessage(new Message(MessageTypeEnum::I_QUIT, ''));
             }
         }
+    }
+
+    /**
+     * 发送自定义消息.
+     *
+     * @param Message $message
+     *
+     * @throws
+     */
+    public function sendCustomMessage(Message $message)
+    {
+        $this->sendMessage($message);
     }
 
     /**

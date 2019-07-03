@@ -17,34 +17,38 @@ use React\Promise\Promise;
 
 /**
  * 可以使用on方法监听以下预定义事件:
- * @event start         dispatcher启动
- *                      参数: \Archman\BugsBunny\Dispatcher $master
+ * @event start                     dispatcher启动
+ *                                  参数: \Archman\BugsBunny\Dispatcher $master
  *
- * @event patrolling    进行一次巡逻,巡逻会检查僵尸进程,并给使用者定时进行抽样的机会
- *                      参数: \Archman\BugsBunny\Dispatcher $master
+ * @event patrolling                进行一次巡逻,巡逻会检查僵尸进程,并给使用者定时进行抽样的机会
+ *                                  参数: \Archman\BugsBunny\Dispatcher $master
  *
- * @event consumed      从消息队列消费了一条消息
- *                      参数: array $message, \Archman\BugsBunny\Dispatcher $master
+ * @event consumed                  从消息队列消费了一条消息
+ *                                  参数: \Archman\Whisper\Message $msg, \Archman\BugsBunny\Dispatcher $master
  *
- * @event processed     一条队列消息被worker成功处理
- *                      参数: string $workerID, \Archman\BugsBunny\Dispatcher $master
+ * @event processed                 一条队列消息被worker成功处理
+ *                                  参数: string $workerID, \Archman\BugsBunny\Dispatcher $master
  *
- * @event workerExit    worker退出
- *                      参数: string $workerID, int $pid, \Archman\BugsBunny\Dispatcher $master
+ * @event customMessageProcessed    一条队列消息被worker成功处理
+ *                                  参数: string $workerID, \Archman\BugsBunny\Dispatcher $master
  *
- * @event limitReached  worker数量达到上限
- *                      参数: \Archman\BugsBunny\Dispatcher $master
+ * @event workerExit                worker退出
+ *                                  参数: string $workerID, int $pid, \Archman\BugsBunny\Dispatcher $master
  *
- * @event message       worker发来一条自定义消息
- *                      参数: string $workerID, \Archman\Whisper\Message $msg, \Archman\BugsBunny\Dispatcher $master
+ * @event limitReached              worker数量达到上限
+ *                                  参数: \Archman\BugsBunny\Dispatcher $master
  *
- * @event error         出现错误
- *                      参数: string $reason, \Throwable $ex, \Archman\BugsBunny\Dispatcher $master
- *                      $reason enum:
- *                          'shuttingDown'          程序结束,关闭剩余worker过程中出错
- *                          'dispatchingMessage'    向worker投放amqp消息时出错
- *                          'sendingMessage'        向worker发送控制信息时出错
- *                          'creatingWorker'        创建worker时出错
+ * @event message                   worker发来一条自定义消息
+ *                                  参数: string $workerID, \Archman\Whisper\Message $msg, \Archman\BugsBunny\Dispatcher $master
+ *
+ * @event error                     出现错误
+ *                                  参数: string $reason, \Throwable $ex, \Archman\BugsBunny\Dispatcher $master
+ *                                  $reason enum:
+ *                                      'shuttingDown'              程序结束,关闭剩余worker过程中出错
+ *                                      'dispatchingMessage'        向worker投放amqp消息时出错
+ *                                      'dispatchingCustomMessage'  向worker投放自定义消息时出错
+ *                                      'sendingMessage'            向worker发送控制信息时出错
+ *                                      'creatingWorker'            创建worker时出错
  */
 class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
 {
@@ -255,6 +259,14 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                 $this->errorlessEmit('processed', [$workerID]);
                 $this->tryDispatchCached();
                 break;
+            case MessageTypeEnum::CUSTOM_MESSAGE_PROCESSED:
+                $this->workerScheduler->release($workerID);
+                if (isset($this->workersInfo[$workerID])) {
+                    $this->workersInfo[$workerID]['processed']++;
+                }
+                $this->errorlessEmit('customMessageProcessed', [$workerID]);
+                $this->tryDispatchCached();
+                break;
             case MessageTypeEnum::STOP_SENDING:
                 // worker主动告知不再希望收到更多队列消息
                 // 这时会启动worker关闭沟通流程
@@ -292,7 +304,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
     ) {
         $reachedBefore = $this->limitReached();
         $this->stat['maxMessageLength'] = max(strlen($AMQPMessage->content), $this->stat['maxMessageLength']);
-        $message = [
+        $message = new Message(MessageTypeEnum::QUEUE, json_encode([
             'messageID' => Helper::uuid(),
             'meta' => [
                 'amqp' => [
@@ -303,11 +315,10 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                 ],
             ],
             'content' => $AMQPMessage->content,
-        ];
+        ]));
 
         if ($reachedBefore) {
-            $this->cachedMessages->push($message);
-            $this->stat['peakNumCached'] = max($this->stat['peakNumCached'], count($this->cachedMessages));
+            $this->cacheMessage($message);
         } else {
             try {
                 $this->dispatch($message);
@@ -334,6 +345,30 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                     });
                 }
             });
+        }
+    }
+
+    /**
+     * 向worker派发自定义消息.
+     *
+     * @param Message $message
+     */
+    public function dispatchCustomMessage(Message $message)
+    {
+        $reachedBefore = $this->limitReached();
+        if ($reachedBefore) {
+            $this->cacheMessage($message);
+        } else {
+            try {
+                $this->dispatch($message);
+            } catch (\Throwable $e) {
+                $this->errorlessEmit('error', ['dispatchingCustomMessage', $e]);
+            }
+        }
+
+        if ($this->limitReached() && !$reachedBefore) {
+            // 边沿触发
+            $this->errorlessEmit('limitReached');
         }
     }
 
@@ -465,24 +500,26 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
     /**
      * 派发消息.
      *
-     * @param array $message
+     * @param Message $message
      *
      * @return string 派发给的worker id
      * @throws
      */
-    private function dispatch(array $message): string
+    private function dispatch(Message $message): string
     {
         $workerID = $this->scheduleWorker();
 
         try {
-            $this->sendMessage($workerID, new Message(MessageTypeEnum::QUEUE, json_encode($message)));
+            $this->sendMessage($workerID, $message);
         } catch (\Throwable $e) {
             $this->workerScheduler->release($workerID);
             throw $e;
         }
-        $this->stat['consumed']++;
         $this->workersInfo[$workerID]['sent']++;
-        $this->errorlessEmit('consumed', [$message]);
+        if ($message->getType() === MessageTypeEnum::QUEUE) {
+            $this->stat['consumed']++;
+            $this->errorlessEmit('consumed', [$message]);
+        }
 
         return $workerID;
     }
@@ -622,5 +659,11 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
         while (($pid = pcntl_wait($status, WNOHANG)) > 0) {
             $this->clearWorker($this->idMap[$pid] ?? '', $pid);
         }
+    }
+
+    private function cacheMessage(Message $msg)
+    {
+        $this->cachedMessages->push($msg);
+        $this->stat['peakNumCached'] = max($this->stat['peakNumCached'], count($this->cachedMessages));
     }
 }
