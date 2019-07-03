@@ -33,7 +33,7 @@ use React\Promise\Promise;
  *                      参数: string $workerID, int $pid, \Archman\BugsBunny\Dispatcher $master
  *
  * @event limitReached  worker数量达到上限
- *                      参数: Dispatcher $master
+ *                      参数: \Archman\BugsBunny\Dispatcher $master
  *
  * @event message       worker发来一条自定义消息
  *                      参数: string $workerID, \Archman\Whisper\Message $msg, \Archman\BugsBunny\Dispatcher $master

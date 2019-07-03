@@ -20,7 +20,7 @@ use React\EventLoop\TimerInterface;
  *                          参数: \Archman\Whisper\Message $msg, \Archman\BugsBunny\Worker $worker
  *
  * @event disconnected      与dispatcher的连接中断,即将退出
- *                          参数: Worker $worker
+ *                          参数: \Archman\BugsBunny\Worker $worker
  *
  * @event error             发生错误
  *                          参数: string $reason, \Throwable $ex, \Archman\BugsBunny\Worker $worker
