@@ -228,7 +228,7 @@ class Connection implements AMQPConnectionInterface
      */
     public function resume(): PromiseInterface
     {
-        if (!$this->state === self::STATE_DISCONNECTED) {
+        if (!$this->isConnected()) {
             return reject(new NotConnectedException());
         }
 
@@ -265,6 +265,11 @@ class Connection implements AMQPConnectionInterface
                     throw new ResumeConsumingException($reason);
                 }
             });
+    }
+
+    public function isConnected(): bool
+    {
+        return $this->state !== self::STATE_DISCONNECTED;
     }
 
     /**

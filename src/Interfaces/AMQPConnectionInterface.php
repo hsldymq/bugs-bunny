@@ -17,4 +17,6 @@ interface AMQPConnectionInterface
     public function pause(): PromiseInterface;
 
     public function resume(): PromiseInterface;
+
+    public function isConnected(): bool;
 }
