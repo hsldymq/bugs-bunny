@@ -27,6 +27,9 @@ class MessageTypeEnum
     // 对于主动退出模式,dispatcher收到I_QUIT消息后,告知dispatcher准备好接受worker的退出
     const ROGER_THAT = 6;
 
+    // 自定义消息
+    const CUSTOM_MESSAGE = 7;
+
     // worker处理完自定义消息
-    const CUSTOM_MESSAGE_PROCESSED = 7;
+    const CUSTOM_MESSAGE_PROCESSED = 8;
 }
