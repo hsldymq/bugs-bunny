@@ -265,7 +265,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                     $this->errorlessEmit('error', ['sendingMessage', $e]);
                 }
                 break;
-            case MessageTypeEnum::I_AM_QUIT:
+            case MessageTypeEnum::I_QUIT:
                 // 正常的worker关闭流程总是以dispatcher发送一个类型为LAST_MSG的消息开始
                 // worker关闭有主动和被动关闭两种模式
                 // 对于主动关闭模式,worker收到LAST_MSG,会返回I_AM_QUIT消息通知即将退出

@@ -173,7 +173,7 @@ class Worker extends AbstractWorker
             if ($this->passiveShutdown) {
                 $this->sendMessage(new Message(MessageTypeEnum::KILL_ME, ''));
             } else {
-                $this->sendMessage(new Message(MessageTypeEnum::I_AM_QUIT, ''));
+                $this->sendMessage(new Message(MessageTypeEnum::I_QUIT, ''));
             }
         }
     }
