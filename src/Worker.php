@@ -13,6 +13,9 @@ use React\EventLoop\TimerInterface;
  * @event start             worker启动
  *                          参数: Worker $worker
  *
+ * @event patrolling        进行一次巡逻,给使用者定时进行抽样的机会
+ *                          参数: Worker $worker
+ *
  * @event message           dispatcher发来自定义消息时
  *                          参数: \Archman\Whisper\Message $msg, Worker $worker
  *
@@ -74,6 +77,11 @@ class Worker extends AbstractWorker
      */
     private $passiveShutdown = false;
 
+    /**
+     * @var int 进行一次巡逻的间隔周期(秒)
+     */
+    private $patrolPeriod = 60;
+
     public function __construct(string $id, $socketFD)
     {
         parent::__construct($id, $socketFD);
@@ -92,7 +100,7 @@ class Worker extends AbstractWorker
         $this->state = self::STATE_RUNNING;
         while ($this->state !== self::STATE_SHUTDOWN) {
             try {
-                $this->process(60);
+                $this->process($this->patrolPeriod);
             } catch (\Throwable $e) {
                 $this->errorlessEmit('error', ['unrecoverable', $e]);
                 break;
@@ -102,6 +110,8 @@ class Worker extends AbstractWorker
                 $this->errorlessEmit('disconnected');
                 break;
             }
+
+            $this->errorlessEmit('patrolling');
         }
     }
 
@@ -239,6 +249,22 @@ class Worker extends AbstractWorker
         try {
             $this->emit($event, $args);
         } finally {}
+    }
+
+    /**
+     * 设置巡逻的间隔周期时间.
+     *
+     * @param int $seconds
+     *
+     * @return self
+     */
+    public function setPatrolPeriod(int $seconds): self
+    {
+        if ($seconds > 0) {
+            $this->patrolPeriod = $seconds;
+        }
+
+        return $this;
     }
 
     private function trySetShutdownTimer()
