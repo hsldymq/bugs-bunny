@@ -550,10 +550,12 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                 $this->errorlessEmit('error', ['dispatchingMessage', $e]);
             }
         } else if ($this->state === self::STATE_RUNNING) {
-            $this->connection->resume()
-                ->then(null, function (\Throwable $error) {
-                    $this->shutdown($error);
-                });
+            if ($this->connection->isConnected()) {
+                $this->connection->resume()
+                    ->then(null, function (\Throwable $error) {
+                        $this->shutdown($error);
+                    });
+            }
         }
     }
 
