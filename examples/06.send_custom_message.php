@@ -5,7 +5,7 @@
  *
  * 有时候我们可能需要在消费的同时定时定量的做一些额外的操作,例如统计运行时数据或消费数据,或者定时归档一些队列消费相关的数据
  * 我们可以让dispatcher的向任意空闲worker发送一个自定义消息,让其处理这些额外的操作
- * 还可以利用patrolling事件,我们就能定时让worker处理这样的事情.
+ * 还可以利用dispatcher的patrolling事件,我们就能定时让worker处理这样的事情.
  */
 
 require_once __DIR__.'/../vendor/autoload.php';
