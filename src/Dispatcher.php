@@ -63,8 +63,8 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
      * @var array
      * [
      *      $workerID => [
-     *          'sent' => (int),        // 已向该worker投放的消息数量
-     *          'processed' => (int),   // 已处理的消息数量
+     *          'sent' => (int),        // 已向该worker投放的消息数量(包含自定义消息)
+     *          'processed' => (int),   // 已处理的消息数量(包含自定义消息)
      *      ],
      *      ...
      * ]
@@ -101,8 +101,8 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
     /**
      * @var array 统计信息.
      * [
-     *      'consumed' => (int),            // 消费了的消息总数
-     *      'processed' => (int),           // 处理了的消息总数
+     *      'consumed' => (int),            // 消费了的消息总数(它代表消费的队列消息的数量,不包含自定义消息)
+     *      'processed' => (int),           // 处理了的消息总数(它代表处理的队列消息的数量,不包含自定义消息)
      *      'maxMessageLength' => (int),    // 最大消息大小(字节)
      *      'peakNumWorkers' => (int),      // worker数量峰值
      *      'peakNumCached' => (int),       // 缓存消息数量峰值
