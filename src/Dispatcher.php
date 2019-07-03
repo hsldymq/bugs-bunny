@@ -20,7 +20,7 @@ use React\Promise\Promise;
  * @event start         dispatcher启动
  *                      参数: Dispatcher $master
  *
- * @event patrolling    进行一次巡逻,巡逻会检查僵尸进程,并给使用者进行定时抽样的能力
+ * @event patrolling    进行一次巡逻,巡逻会检查僵尸进程,并给使用者定时进行抽样的机会
  *                      参数: Dispatcher $master
  *
  * @event consumed      从消息队列消费了一条消息
@@ -127,7 +127,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
     private $cacheLimit = 0;
 
     /**
-     * @var int 僵尸进程检查周期(秒)
+     * @var int 进行一次巡逻的间隔周期(秒)
      */
     private $patrolPeriod = 300;
 
@@ -375,13 +375,11 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
     }
 
     /**
-     * 进行僵尸进程检查的周期.
-     *
-     * 例如设置为5分钟,那么每5分钟会调用pcntl_wait清理掉没有成功清除的僵尸进程
+     * 设置巡逻的间隔周期时间.
      *
      * @param int $seconds
      *
-     * @return Dispatcher
+     * @return self
      */
     public function setPatrolPeriod(int $seconds): self
     {
@@ -397,7 +395,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
      *
      * @param int $sec
      *
-     * @return Dispatcher
+     * @return self
      */
     public function setShutdownTimeoutSec(int $sec): self
     {
