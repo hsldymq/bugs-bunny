@@ -40,6 +40,11 @@ class WorkerFactory implements WorkerFactoryInterface
      */
     private $isPassiveShutdown = null;
 
+    /**
+     * @var null|int
+     */
+    private $patrolPeriod = null;
+
     public function makeWorker(string $id, $socketFD): AbstractWorker
     {
         $worker = new Worker($id, $socketFD);
@@ -62,6 +67,10 @@ class WorkerFactory implements WorkerFactoryInterface
 
         if ($this->isPassiveShutdown !== null) {
             $worker->setShutdownMode($this->isPassiveShutdown);
+        }
+
+        if ($this->patrolPeriod !== null) {
+            $worker->setPatrolPeriod($this->patrolPeriod);
         }
 
         return $worker;
@@ -138,11 +147,27 @@ class WorkerFactory implements WorkerFactoryInterface
      *
      * @param bool $isPassive
      *
-     * @return WorkerFactory
+     * @return self
      */
     public function setShutdownMode(bool $isPassive): self
     {
         $this->isPassiveShutdown = $isPassive;
+
+        return $this;
+    }
+
+    /**
+     * 设置Worker的巡逻的间隔周期时间.
+     *
+     * @param int $seconds
+     *
+     * @return self
+     */
+    public function setPatrolPeriod(int $seconds): self
+    {
+        if ($seconds > 0) {
+            $this->patrolPeriod = $seconds;
+        }
 
         return $this;
     }
