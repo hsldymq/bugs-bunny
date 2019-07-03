@@ -193,12 +193,13 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                 $this->process($this->patrolPeriod);
             } catch (\Throwable $e) {
                 $this->shutdown($e);
+                break;
+            } finally {
+                // 补杀僵尸进程
+                $this->waitChildren();
             }
 
             $this->errorlessEmit('patrolling');
-
-            // 补杀僵尸进程
-            $this->waitChildren();
         }
 
         // 将剩余的缓存消息都处理完
