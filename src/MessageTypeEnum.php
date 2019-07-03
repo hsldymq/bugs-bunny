@@ -24,6 +24,6 @@ class MessageTypeEnum
     // 对于主动退出模式,worker进程通知dispatcher准备退出
     const I_QUIT = 5;
 
-    // 对于主动退出模式,dispatcher收到I_AM_QUIT消息后,告知dispatcher准备好接受worker的退出
+    // 对于主动退出模式,dispatcher收到I_QUIT消息后,告知dispatcher准备好接受worker的退出
     const ROGER_THAT = 6;
 }
