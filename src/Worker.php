@@ -79,9 +79,9 @@ class Worker extends AbstractWorker
     private $passiveShutdown = false;
 
     /**
-     * @var int 进行一次巡逻的间隔周期(秒)
+     * @var float 进行一次巡逻的间隔周期(秒)
      */
-    private $patrolPeriod = 60;
+    private $patrolPeriod = 60.0;
 
     public function __construct(string $id, $socketFD)
     {
@@ -282,7 +282,7 @@ class Worker extends AbstractWorker
     public function setPatrolPeriod(int $seconds): self
     {
         if ($seconds > 0) {
-            $this->patrolPeriod = $seconds;
+            $this->patrolPeriod = floatval($seconds);
         }
 
         return $this;

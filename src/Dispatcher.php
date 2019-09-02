@@ -131,9 +131,9 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
     private $cacheLimit = 0;
 
     /**
-     * @var int 进行一次巡逻的间隔周期(秒)
+     * @var float 进行一次巡逻的间隔周期(秒)
      */
-    private $patrolPeriod = 300;
+    private $patrolPeriod = 300.0;
 
     /**
      * @var string 运行状态 self::STATE_RUNNING / self::STATE_FLUSHING / self::SHUTDOWN
@@ -420,7 +420,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
     public function setPatrolPeriod(int $seconds): self
     {
         if ($seconds > 0) {
-            $this->patrolPeriod = $seconds;
+            $this->patrolPeriod = floatval($seconds);
         }
 
         return $this;
