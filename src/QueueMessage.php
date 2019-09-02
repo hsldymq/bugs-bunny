@@ -40,6 +40,8 @@ class QueueMessage
      *      'headers' => (array),
      *      'content' => (string),
      * ]
+     *
+     * @throws
      */
     public function __construct(array $info)
     {
@@ -93,6 +95,7 @@ class QueueMessage
     /**
      * @param array $info
      * @param string $field
+     *
      * @return mixed
      * @throws \Exception
      */
