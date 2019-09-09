@@ -200,31 +200,6 @@ class Worker extends AbstractWorker
     }
 
     /**
-     * 设置worker的空闲退出的最大空闲时间(秒).
-     *
-     * @param int $seconds 必须大于0,否则设置无效
-     */
-    public function setIdleShutdown(int $seconds)
-    {
-        if ($seconds <= 0) {
-            return;
-        }
-
-        $this->idleShutdown = true;
-        $this->idleShutdownSec = $seconds;
-    }
-
-    /**
-     * 不再允许空闲退出.
-     */
-    public function noIdleShutdown()
-    {
-        $this->idleShutdown = false;
-        $this->idleShutdownSec = 0;
-        $this->clearShutdownTimer();
-    }
-
-    /**
      * 注册队列消息处理器.
      *
      * @param callable $h
@@ -256,6 +231,31 @@ class Worker extends AbstractWorker
         $this->passiveShutdown = $isPassive;
 
         return $this;
+    }
+
+    /**
+     * 设置worker的空闲退出的最大空闲时间(秒).
+     *
+     * @param int $seconds 必须大于0,否则设置无效
+     */
+    public function setIdleShutdown(int $seconds)
+    {
+        if ($seconds <= 0) {
+            return;
+        }
+
+        $this->idleShutdown = true;
+        $this->idleShutdownSec = $seconds;
+    }
+
+    /**
+     * 不再允许空闲退出.
+     */
+    public function noIdleShutdown()
+    {
+        $this->idleShutdown = false;
+        $this->idleShutdownSec = 0;
+        $this->clearShutdownTimer();
     }
 
     public function shutdown()
