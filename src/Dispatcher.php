@@ -490,6 +490,16 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
     }
 
     /**
+     * 返回当前缓存的消息数量.
+     *
+     * @return int
+     */
+    public function cachedNum(): int
+    {
+        return $this->cachedMessages->count();
+    }
+
+    /**
      * @param string $event
      * @param array $args
      */
