@@ -86,8 +86,6 @@ class Worker extends AbstractWorker
     public function __construct(string $id, $socketFD)
     {
         parent::__construct($id, $socketFD);
-
-        $this->trySetShutdownTimer();
     }
 
     public function run()
@@ -96,6 +94,7 @@ class Worker extends AbstractWorker
             return;
         }
 
+        $this->trySetShutdownTimer();
         $this->errorlessEmit('start');
 
         $this->state = self::STATE_RUNNING;
