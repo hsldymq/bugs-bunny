@@ -29,9 +29,6 @@ $factory = (new WorkerFactory())
         // 处理200ms,在消息量很多时,这会造成Dispatcher大量fork出worker
         usleep(200000);
     })
-    ->registerSignal(SIGINT, function () {
-        // Ctrl+C会向前端进程组发送SIGINT信号,我们不希望worker也被这个信号影响,而是希望由dispatcher来控制它的生存周期
-    })
     ->registerEvent('error', function (string $reason, \Throwable $e, Worker $worker) {
         echo "Worker Error. Reason: {$reason}, Message: {$e->getMessage()}\n";
     });

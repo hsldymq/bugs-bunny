@@ -28,9 +28,6 @@ $factory = (new WorkerFactory())
             $worker->shutdown();
         }
     })
-    ->registerSignal(SIGINT, function () {
-        // Ctrl+C会向前端进程组发送SIGINT信号,我们不希望worker也被这个信号影响,而是希望由dispatcher来控制它的生存周期
-    })
     ->registerEvent('error', function (string $reason, \Throwable $e, Worker $worker) {
         echo "Worker Error. Reason: {$reason}, Message: {$e->getMessage()}\n";
     });
