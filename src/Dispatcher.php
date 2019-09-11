@@ -41,6 +41,9 @@ use React\Promise\Promise;
  * @event message                   worker发来一条自定义消息
  *                                  参数: string $workerID, \Archman\Whisper\Message $msg, \Archman\BugsBunny\Dispatcher $master
  *
+ * @event shutdown                  dispatcher退出
+ *                                  参数: \Archman\BugsBunny\Dispatcher $master
+ *
  * @event error                     出现错误
  *                                  参数: string $reason, \Throwable $ex, \Archman\BugsBunny\Dispatcher $master
  *                                  $reason enum:
