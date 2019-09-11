@@ -1,15 +1,22 @@
 # CHANGELOG
 
+* 0.2.1 (2019-09-11)
+    * 修复bug
+    * 允许获取缓存的消息数量
+    * worker进程默认会捕获SIGINT信号,以防止异常退出
+
+* 0.1.10 (2019-09-11)
+    * 修复bug
+    * 允许获取缓存的消息数量
+    * worker进程默认会捕获SIGINT信号,以防止异常退出
+    * worker增加patrolling事件
+    * worker允许设置patrol间隔周期
+
 * 0.2.0 (2019-07-03)
     * 修复bug
     * worker增加patrolling事件
     * worker允许设置patrol间隔周期
     * 支持发送和接受自定义消息
-
-* 0.1.10 (2019-07-03)
-    * 修复bug
-    * worker增加patrolling事件
-    * worker允许设置patrol间隔周期
 
 * 0.1.9 (2019-06-20)
     * dispatcher增加事件
