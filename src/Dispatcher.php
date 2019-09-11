@@ -494,7 +494,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
      *
      * @return int
      */
-    public function cachedNum(): int
+    public function numCached(): int
     {
         return $this->cachedMessages->count();
     }
