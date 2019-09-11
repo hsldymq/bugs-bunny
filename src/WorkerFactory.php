@@ -49,6 +49,11 @@ class WorkerFactory implements WorkerFactoryInterface
     {
         $worker = new Worker($id, $socketFD);
 
+        // 在以非daemon方式运行的情况下,子进程作为前台进程组会收到SIGINT而非正常退出,所以需要捕获该信号
+        if (defined('SIGINT')) {
+            $worker->addSignalHandler(SIGINT, function () {});
+        }
+
         foreach ($this->signalHandlers as $each) {
             $worker->addSignalHandler($each[0], $each[1]);
         }
