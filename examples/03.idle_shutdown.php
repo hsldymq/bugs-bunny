@@ -53,7 +53,7 @@ $dispatcher = (new Dispatcher($conn, $factory))
         $consumed = $stat['consumed'];
         $memory = number_format(memory_get_usage());
 
-        echo "{$processed}/{$consumed} Worker {$workerID} Has Processed A Message, Workers:{$dispatcher->countWorkers()}, Memory Usage:{$memory} Bytes.\n";
+        echo "{$processed}/{$consumed} Worker {$workerID} Has Processed A Message, Cached:{$dispatcher->numCached()}, Workers:{$dispatcher->countWorkers()}, Memory Usage:{$memory} Bytes.\n";
     })
     ->on('workerExit', function (string $workerID, int $pid, Dispatcher $dispatcher) {
         $count = $dispatcher->countWorkers();
