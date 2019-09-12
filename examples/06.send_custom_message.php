@@ -16,6 +16,8 @@ use Archman\BugsBunny\Worker;
 use Archman\BugsBunny\Connection;
 use Archman\Whisper\Message;
 
+echo "Waiting for messages. To exit press CTRL+C\n";
+
 $factory = (new WorkerFactory())
     // 向worker注册message事件,捕获dispatcher发来的自定义消息
     ->registerEvent('message', function (Message $msg, Worker $worker) {
@@ -75,10 +77,8 @@ $dispatcher = (new Dispatcher($conn, $factory))
         echo "Peak Number Of Workers: {$stat['peakNumWorkers']}.\n";
         echo "Peak Number Of Cached Messages: {$stat['peakNumCached']}.\n";
         echo "Peak Memory Usage: ".number_format(memory_get_peak_usage()).' Bytes.'.PHP_EOL;
-    });
-$dispatcher->addSignalHandler(SIGINT, function () use ($dispatcher) {
-    $dispatcher->shutdown();
-});
-
-echo "Waiting for messages. To exit press CTRL+C\n";
-$dispatcher->run();
+    })
+    ->addSignalHandler(SIGINT, function (int $signal, Dispatcher $dispatcher) {
+        $dispatcher->shutdown();
+    })
+    ->run();
