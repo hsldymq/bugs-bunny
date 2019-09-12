@@ -67,11 +67,6 @@ $factory = (new WorkerFactory())
         // 处理错误,打日志或其他操作,比如你还可以使用$worker->shutdown();使进程安全退出
     });
 
-$factory->registerSignal(SIGINT, function () {
-    // 可以注册信号处理器,防止worker被信号杀死
-    // 我们只希望worker的启动关闭都是由dispatcher控制,这样才是安全的
-})    
-
 
 // 到AMQP服务器连接配置
 $options = getAMQPConnectionOptions(); 
@@ -95,15 +90,13 @@ $dispatcher = (new Dispatcher($conn, $factory))
     })
     ->on('shutdown', function (Dispatcher $dispatcher) {
         // dispatcher即将退出
-    });
-$dispatcher->addSignalHandler(SIGINT, function () use ($dispatcher) {
-    // 可以注册信号处理器,防止因为信号被杀死
-    // 这里我们可以调用安全关闭方法.
-    $dispatcher->shutdown();
-});
-
-// 你可以不传参数,但如果传true则是以daemon运行
-$dispatcher->run(true);
+    })
+    ->addSignalHandler(SIGINT, function (int $signal, Dispatcher $dispatcher) {
+        // 可以注册信号处理器,防止因为信号被杀死
+        // 这里我们可以调用安全关闭方法.
+        $dispatcher->shutdown();
+    })
+    ->run(true);    // 你可以不传参数,但如果传true则是以daemon运行
 ```
 
 ### 更多
