@@ -24,6 +24,8 @@ use Archman\BugsBunny\Dispatcher;
 use Archman\BugsBunny\Worker;
 use Archman\BugsBunny\Connection;
 
+echo "Waiting for messages. To exit press CTRL+C\n";
+
 $factory = (new WorkerFactory())
     ->setMessageHandler(function (QueueMessage $message, Worker $worker) {
         // 处理200ms,在消息量很多时,这会造成Dispatcher大量fork出worker
@@ -66,10 +68,8 @@ $dispatcher = (new Dispatcher($conn, $factory))
         echo "Peak Number Of Workers: {$stat['peakNumWorkers']}.\n";
         echo "Peak Number Of Cached Messages: {$stat['peakNumCached']}.\n";
         echo "Peak Memory Usage: ".number_format(memory_get_peak_usage()).' Bytes.'.PHP_EOL;
-    });
-$dispatcher->addSignalHandler(SIGINT, function () use ($dispatcher) {
-    $dispatcher->shutdown();
-});
-
-echo "Waiting for messages. To exit press CTRL+C\n";
-$dispatcher->run();
+    })
+    ->addSignalHandler(SIGINT, function (int $signal, Dispatcher $dispatcher) {
+        $dispatcher->shutdown();
+    })
+    ->run();
