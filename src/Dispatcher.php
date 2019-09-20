@@ -614,11 +614,4 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
             // 防止子进程无响应,这里循环一定时间后直接退出
         } while ((time() - $startInformTime) < $this->shutdownTimeoutSec);
     }
-
-    private function waitChildren()
-    {
-        while (($pid = pcntl_wait($status, WNOHANG)) > 0) {
-            $this->clearWorker($this->idMap[$pid] ?? '', $pid);
-        }
-    }
 }
