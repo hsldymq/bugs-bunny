@@ -669,13 +669,6 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
         } while (($now - $startInformTime) < $this->shutdownTimeoutSec);
     }
 
-    private function waitChildren()
-    {
-        while (($pid = pcntl_wait($status, WNOHANG)) > 0) {
-            $this->clearWorker($this->idMap[$pid] ?? '', $pid);
-        }
-    }
-
     private function cacheMessage(Message $msg)
     {
         $this->cachedMessages->push($msg);
