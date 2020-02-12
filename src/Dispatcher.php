@@ -578,7 +578,17 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
 
         if (!$workerID) {
             try {
-                $workerID = $this->createWorker($this->workerFactory);
+                $workerID = $this->createWorker($this->workerFactory, function () {
+                    // 这里的代码是在worker进程中执行的,并非删除master的属性
+                    unset(
+                        $this->cachedMessages,
+                        $this->stat,
+                        $this->workersInfo,
+                        $this->idMap,
+                        $this->workerFactory,
+                        $this->workerScheduler,
+                    );
+                });
             } catch (\Throwable $e) {
                 $this->errorlessEmit('error', ['creatingWorker', $e]);
                 throw $e;
