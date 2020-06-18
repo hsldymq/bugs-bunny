@@ -308,9 +308,9 @@ class Connection implements AMQPConnectionInterface
 
         return all($promises)->then(null, function ($reason) {
             if ($reason instanceof \Throwable) {
-                throw new ConsumerBindingException($reason->getMessage(), null, $reason);
+                throw new ConsumerBindingException($reason->getMessage(), 0, $reason);
             } else {
-                throw new ConsumerBindingException($reason);
+                throw new ConsumerBindingException(strval($reason));
             }
         });
     }
