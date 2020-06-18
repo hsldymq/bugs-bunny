@@ -264,13 +264,6 @@ class Worker extends AbstractWorker
         }
     }
 
-    public function errorlessEmit(string $event, array $args = [])
-    {
-        try {
-            $this->emit($event, $args);
-        } finally {}
-    }
-
     /**
      * 设置巡逻的间隔周期时间.
      *
