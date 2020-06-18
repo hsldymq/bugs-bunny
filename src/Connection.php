@@ -142,9 +142,9 @@ class Connection implements AMQPConnectionInterface
                 return $this->client->channel();
             }, function ($reason) {
                 if ($reason instanceof \Throwable) {
-                    throw new ConnectFailedException($reason->getMessage(), null, $reason);
-                } else {
-                    throw new ConnectFailedException($reason);
+                    throw new ConnectFailedException($reason->getMessage(), 0, $reason);
+                } else  {
+                    throw new ConnectFailedException(strval($reason));
                 }
             })
             ->then(function (Channel $channel) {
