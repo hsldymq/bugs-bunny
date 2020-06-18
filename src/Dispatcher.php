@@ -500,17 +500,6 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
     }
 
     /**
-     * @param string $event
-     * @param array $args
-     */
-    public function errorlessEmit(string $event, array $args = [])
-    {
-        try {
-            $this->emit($event, $args);
-        } finally {}
-    }
-
-    /**
      * 派发消息.
      *
      * @param Message $message
