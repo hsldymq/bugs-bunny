@@ -5,7 +5,7 @@
  * 如果大量消息到来,dispatcher就会fork大量的worker来处理,势必大量消耗系统资源.
  *
  * 为了防止这种情况发生,可以为dispatcher设置fork worker的上限数量来达到这个目的.
- * 下面的代码与示例01大同小异,但我们调用了setMaxWorkers设置worker上线,并调用setCacheLimit允许在worker忙碌的时候缓存一些消息,待有空闲的时候直接派发.
+ * 下面的代码与示例01大同小异,但我们调用了setMaxWorkers设置worker上限,并调用setCacheLimit允许在worker忙碌的时候缓存一些消息,待有空闲的时候直接派发.
  *
  * 在这个示例里,如果在运行过程中你按CTRL+C试图停止运行,你会发现它有时候并不会立刻停止,而是会试图在运行片刻时间后才停止.
  * 这是因为dispatcher会将缓存起来的消息分发完之后才结束运行, 这样我们才能确保消费的每一条消息都能够被worker给处理掉而不遗漏.
