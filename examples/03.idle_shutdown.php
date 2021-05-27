@@ -44,7 +44,7 @@ $factory = (new WorkerFactory())
 $params = require __DIR__.'/amqp_params.php';
 $conn = new Connection($params['connectionOptions'], $params['queues']);
 
-$dispatcher = (new Dispatcher($conn, $factory))
+(new Dispatcher($conn, $factory))
     // 这里依旧如示例02一样,设置worker上限,将数量控制在一个安全的范围内
     ->setMaxWorkers(50)
     // 设置缓存数量

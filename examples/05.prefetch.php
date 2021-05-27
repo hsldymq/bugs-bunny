@@ -36,7 +36,7 @@ $conn = new Connection($params['connectionOptions'], $params['queues']);
 // 使用该方法设置prefetch值
 $conn->setPrefetch(10);
 
-$dispatcher = (new Dispatcher($conn, $factory))
+(new Dispatcher($conn, $factory))
     ->on('processed', function (string $workerID, Dispatcher $dispatcher) {
         $stat = $dispatcher->getStat();
         $processed = $stat['processed'];

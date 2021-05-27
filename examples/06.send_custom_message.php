@@ -35,7 +35,7 @@ $factory = (new WorkerFactory())
 $params = require __DIR__.'/amqp_params.php';
 $conn = new Connection($params['connectionOptions'], $params['queues']);
 
-$dispatcher = (new Dispatcher($conn, $factory))
+(new Dispatcher($conn, $factory))
     // 为了方便展示效果,这里每一秒就会触发一次patrolling事件
     ->setPatrolPeriod(1)
     // 我们在patrolling事件中就可以做一些定时的任务,例如通知worker进行一次数据采样或者统计计算等几

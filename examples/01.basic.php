@@ -36,7 +36,7 @@ $factory = (new WorkerFactory())
 $params = require __DIR__.'/amqp_params.php';
 $conn = new Connection($params['connectionOptions'], $params['queues']);
 
-$dispatcher = (new Dispatcher($conn, $factory))
+(new Dispatcher($conn, $factory))
     ->on('processed', function (string $workerID, Dispatcher $dispatcher) {
         $stat = $dispatcher->getStat();
         $processed = $stat['processed'];

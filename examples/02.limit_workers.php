@@ -38,7 +38,7 @@ $factory = (new WorkerFactory())
 $params = require __DIR__.'/amqp_params.php';
 $conn = new Connection($params['connectionOptions'], $params['queues']);
 
-$dispatcher = (new Dispatcher($conn, $factory))
+(new Dispatcher($conn, $factory))
     // 这里将worker限制在一定量,这会降低消费速度,但是不会因为fork将系统资源耗完
     ->setMaxWorkers(50)
     // 设置缓存的消息数量,当worker创建满后,会预先消费一些消息放到缓存中,待有worker空闲时,按照FIFO优先派发缓存的消息
