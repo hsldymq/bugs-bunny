@@ -14,9 +14,9 @@ namespace Archman\BugsBunny;
  */
 class WorkerScheduler
 {
-    const WORKING = 1;
+    public const WORKING = 1;
 
-    const RETIRED = 2;
+    public const RETIRED = 2;
 
     /**
      * @var array
@@ -70,7 +70,7 @@ class WorkerScheduler
      * @param string $workerID
      * @param bool $allocated 是否已经被分配,true时自动将它的分配等级降1
      */
-    public function add(string $workerID, bool $allocated = false)
+    public function add(string $workerID, bool $allocated = false): void
     {
         if (isset($this->levelMap[$workerID])) {
             return;
@@ -93,7 +93,7 @@ class WorkerScheduler
      *
      * @param string $workerID
      */
-    public function remove(string $workerID)
+    public function remove(string $workerID): void
     {
         $level = $this->levelMap[$workerID] ?? null;
         if ($level === null) {
@@ -116,7 +116,7 @@ class WorkerScheduler
      *
      * @param string $workerID
      */
-    public function retire(string $workerID)
+    public function retire(string $workerID): void
     {
         $level = $this->levelMap[$workerID] ?? null;
         if ($level === null) {
@@ -141,7 +141,7 @@ class WorkerScheduler
      *
      * @return string|null 成功分配返回worker id, 没有可用的worker返回null
      */
-    public function allocate()
+    public function allocate(): ?string
     {
         $workerID = null;
         for ($i = count($this->scheduleLevels) - 1; $i > 0; $i--) {
@@ -174,7 +174,7 @@ class WorkerScheduler
      *
      * @param string $workerID
      */
-    public function release(string $workerID)
+    public function release(string $workerID): void
     {
         $level = $this->levelMap[$workerID] ?? null;
 
@@ -280,7 +280,7 @@ class WorkerScheduler
         return $this;
     }
 
-    private function increase(string $which)
+    private function increase(string $which): void
     {
         switch ($which) {
             case 'working':
@@ -295,7 +295,7 @@ class WorkerScheduler
         }
     }
 
-    private function decrease(string $which)
+    private function decrease(string $which): void
     {
         switch ($which) {
             case 'working':

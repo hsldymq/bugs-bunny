@@ -22,11 +22,11 @@ use function React\Promise\resolve;
 
 class Connection implements AMQPConnectionInterface
 {
-    const STATE_DISCONNECTED = 'disconnected';
-    const STATE_CONNECTED = 'connected';
-    const STATE_PAUSING = 'pausing';
-    const STATE_PAUSED = 'paused';
-    const STATE_RESUMING = 'resuming';
+    private const STATE_DISCONNECTED = 'disconnected';
+    private const STATE_CONNECTED = 'connected';
+    private const STATE_PAUSING = 'pausing';
+    private const STATE_PAUSED = 'paused';
+    private const STATE_RESUMING = 'resuming';
 
     /**
      * @var bool

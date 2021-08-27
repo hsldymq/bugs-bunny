@@ -21,7 +21,7 @@ class BunnyAsyncClient extends Client implements EventEmitterInterface
 {
     use EventEmitterTrait;
 
-    public function onDataAvailable()
+    public function onDataAvailable(): void
     {
         try {
             parent::onDataAvailable();
@@ -36,7 +36,7 @@ class BunnyAsyncClient extends Client implements EventEmitterInterface
     /**
      * @return Promise\PromiseInterface
      */
-    public function connect()
+    public function connect(): Promise\PromiseInterface
     {
         $deferred = new Promise\Deferred();
 
@@ -50,7 +50,7 @@ class BunnyAsyncClient extends Client implements EventEmitterInterface
 
         parent::connect()->then(
             function () use ($deferred) {
-                return $deferred->resolve($this);
+                $deferred->resolve($this);
             },
             function (\Throwable $e) use ($deferred) {
                 // needed in case rejected not by the errBack

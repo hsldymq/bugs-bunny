@@ -16,7 +16,7 @@ trait TailingEventEmitterTrait
         parent::emit($event, $arguments);
     }
 
-    public function hasEventListened($event)
+    public function hasEventListened($event): bool
     {
         return isset($this->onceListeners[$event]) || isset($this->listeners[$event]);
     }
