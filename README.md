@@ -1,7 +1,7 @@
 # Bugs Bunny: 弹性的多进程RabbitMQ Consumer
 
 ### 运行要求
-* PHP >= 7.0
+* PHP: ^7.1 || ^8.0
 * ext-pcntl
 * ext-posix
 * [可选,建议使用] ext-event / ext-ev / ext-uv

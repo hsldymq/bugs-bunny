@@ -57,9 +57,9 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
 {
     use TailingEventEmitterTrait;
 
-    const STATE_RUNNING = 1;
-    const STATE_FLUSHING = 2;
-    const STATE_SHUTDOWN = 3;
+    private const STATE_RUNNING = 1;
+    private const STATE_FLUSHING = 2;
+    private const STATE_SHUTDOWN = 3;
 
     /**
      * @var AMQPConnectionInterface
@@ -225,7 +225,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
     /**
      * @param \Throwable|null $withError
      */
-    public function shutdown(\Throwable $withError = null)
+    public function shutdown(\Throwable $withError = null): void
     {
         if ($this->state !== self::STATE_RUNNING) {
             return;
@@ -243,13 +243,13 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
 
     /**
      * @param string $workerID
-     * @param Message $message
+     * @param Message $msg
      *
      * @throws
      */
-    public function onMessage(string $workerID, Message $message)
+    public function onMessage(string $workerID, Message $msg)
     {
-        $type = $message->getType();
+        $type = $msg->getType();
 
         switch ($type) {
             case MessageTypeEnum::PROCESSED:
@@ -295,7 +295,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                 $this->killWorker($workerID, SIGKILL);
                 break;
             default:
-                $this->errorlessEmit('message', [$workerID, $message]);
+                $this->errorlessEmit('message', [$workerID, $msg]);
         }
     }
 
@@ -304,7 +304,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
         string $queue,
         Channel $channel,
         Client $client
-    ) {
+    ): void {
         $reachedBefore = $this->limitReached();
         $this->stat['maxMessageLength'] = max(strlen($AMQPMessage->content), $this->stat['maxMessageLength']);
         $message = new Message(MessageTypeEnum::QUEUE, json_encode([
@@ -356,7 +356,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
      *
      * @param Message $message
      */
-    public function dispatchCustomMessage(Message $message)
+    public function dispatchCustomMessage(Message $message): void
     {
         $reachedBefore = $this->limitReached();
         if ($reachedBefore) {
@@ -530,14 +530,14 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
      * @param string $workerID
      * @param int $pid
      */
-    private function clearWorker(string $workerID, int $pid)
+    private function clearWorker(string $workerID, int $pid): void
     {
         $this->workerScheduler->remove($workerID);
         unset($this->workersInfo[$workerID]);
         unset($this->idMap[$pid]);
     }
 
-    private function tryDispatchCached()
+    private function tryDispatchCached(): void
     {
         if ($this->limitReached()) {
             return;
@@ -612,7 +612,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
      *
      * @throws
      */
-    private function sendLastMessage(string $workerID)
+    private function sendLastMessage(string $workerID): void
     {
         $this->sendMessage($workerID, new Message(MessageTypeEnum::LAST_MSG, ''));
     }
@@ -622,7 +622,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
      *
      * @throws
      */
-    private function flushCached()
+    private function flushCached(): void
     {
         while ($this->state === self::STATE_FLUSHING && count($this->cachedMessages) > 0) {
             while (!$this->limitReached()) {
@@ -638,7 +638,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
      *
      * @throws
      */
-    private function informWorkersQuit()
+    private function informWorkersQuit(): void
     {
         $startInformTime = $now = time();
         $informCount = 0;
@@ -668,7 +668,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
         } while (($now - $startInformTime) < $this->shutdownTimeoutSec);
     }
 
-    private function cacheMessage(Message $msg)
+    private function cacheMessage(Message $msg): void
     {
         $this->cachedMessages->push($msg);
         $this->stat['peakNumCached'] = max($this->stat['peakNumCached'], count($this->cachedMessages));

@@ -3,12 +3,12 @@
   "homepage": "https://github.com/hsldymq/bugs-bunny",
   "license": "MIT",
   "require": {
-    "php": ">=7.0.0",
-    "bunny/bunny": "~0.4.1",
+    "php": "^7.1 || ^8.0",
+    "bunny/bunny": "^0.5",
     "hsldymq/whisper": "~0.3.0"
   },
   "require-dev": {
-    "phpunit/phpunit": "~6.4"
+    "phpunit/phpunit": "^7.5 || ^9.5"
   },
   "autoload": {
     "psr-4": {

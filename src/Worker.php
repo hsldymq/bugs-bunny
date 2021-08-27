@@ -34,9 +34,9 @@ class Worker extends AbstractWorker
 {
     use TailingEventEmitterTrait;
 
-    const STATE_RUNNING = 1;
-    const STATE_SHUTTING = 2;
-    const STATE_SHUTDOWN = 3;
+    private const STATE_RUNNING = 1;
+    private const STATE_SHUTTING = 2;
+    private const STATE_SHUTDOWN = 3;
 
     /**
      * @var callable
@@ -193,7 +193,7 @@ class Worker extends AbstractWorker
      *
      * @throws
      */
-    public function sendCustomMessage(Message $message)
+    public function sendCustomMessage(Message $message): void
     {
         $this->sendMessage($message);
     }
@@ -203,7 +203,7 @@ class Worker extends AbstractWorker
      *
      * @param callable $h
      */
-    public function setMessageHandler(callable $h)
+    public function setMessageHandler(callable $h): void
     {
         $this->messageHandler = $h;
     }
@@ -237,7 +237,7 @@ class Worker extends AbstractWorker
      *
      * @param int $seconds 必须大于0,否则设置无效
      */
-    public function setIdleShutdown(int $seconds)
+    public function setIdleShutdown(int $seconds): void
     {
         if ($seconds <= 0) {
             return;
@@ -250,14 +250,14 @@ class Worker extends AbstractWorker
     /**
      * 不再允许空闲退出.
      */
-    public function noIdleShutdown()
+    public function noIdleShutdown(): void
     {
         $this->idleShutdown = false;
         $this->idleShutdownSec = 0;
         $this->clearShutdownTimer();
     }
 
-    public function shutdown()
+    public function shutdown(): void
     {
         if ($this->state === self::STATE_RUNNING) {
             $this->state = self::STATE_SHUTTING;
@@ -280,7 +280,7 @@ class Worker extends AbstractWorker
         return $this;
     }
 
-    private function trySetShutdownTimer()
+    private function trySetShutdownTimer(): void
     {
         if (!$this->idleShutdown || $this->shutdownTimer) {
             return;
@@ -291,7 +291,7 @@ class Worker extends AbstractWorker
         });
     }
 
-    private function clearShutdownTimer()
+    private function clearShutdownTimer(): void
     {
         if ($this->shutdownTimer) {
             $this->removeTimer($this->shutdownTimer);
