@@ -1,4 +1,5 @@
 # Bugs Bunny: 弹性的多进程RabbitMQ Consumer
+[![Build Status](https://app.travis-ci.com/hsldymq/bugs-bunny.svg?branch=master)](https://app.travis-ci.com/hsldymq/bugs-bunny)
 
 ### 运行要求
 * PHP: ^7.1 || ^8.0
