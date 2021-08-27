@@ -66,7 +66,7 @@ class WorkerSchedulerTest extends TestCase
      */
     public function testRetireWorker()
     {
-        $scheduler = new WorkerScheduler(0);
+        $scheduler = new WorkerScheduler();
         $scheduler->add('a');
         $scheduler->add('b');
 
