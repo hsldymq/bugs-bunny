@@ -1,5 +1,6 @@
 {
   "name": "hsldymq/bugs-bunny",
+  "description": "弹性的多进程RabbitMQ Consumer",
   "homepage": "https://github.com/hsldymq/bugs-bunny",
   "license": "MIT",
   "require": {
