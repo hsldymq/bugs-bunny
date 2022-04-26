@@ -1,0 +1,53 @@
+name: Test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  UnitTest:
+    name: Unit Tests
+    
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        php-version: [7.1, 7.2, 7.3, 7.4, 8.0, 8.1]
+      
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: ${{ matrix.php-version }}
+        coverage: xdebug
+
+    - name: Show PHP Info
+      run: php -v && php -r "foreach (get_loaded_extensions() as \$each) echo \$each.':'.phpversion(\$each).PHP_EOL;"
+
+    - name: Validate composer.json and composer.lock
+      run: composer validate --strict
+      
+    - name: Get Composer Cache Directory
+      id: composer-cache
+      run: |
+        echo "::set-output name=dir::$(composer config cache-files-dir)"
+    - uses: actions/cache@v3
+      with:
+        path: ${{ steps.composer-cache.outputs.dir }}
+        key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-composer-
+
+    - name: Install dependencies
+      run: composer install
+      
+    - name: Run Unit Tests
+      run: composer run-script test -- --coverage-clover coverage.xml
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3.1.0
+      with:
+        files: ./coverage.xml
