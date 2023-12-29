@@ -31,6 +31,9 @@ $factory = (new WorkerFactory())
     ->registerEvent('error', function (string $reason, \Throwable $e, Worker $worker) {
         echo "Worker Error. Reason: {$reason}, Message: {$e->getMessage()}\n";
         $worker->shutdown();
+    })
+    ->registerEvent("shutdown", function (Worker $worker) {
+        echo "worker shutdown event triggered: {$worker->getWorkerID()}\n";
     });
 
 $params = require __DIR__.'/amqp_params.php';

@@ -22,6 +22,9 @@ use React\EventLoop\TimerInterface;
  * @event disconnected      与dispatcher的连接中断,即将退出
  *                          参数: \Archman\BugsBunny\Worker $worker
  *
+ * @event shutdown          worker退出
+ *                          参数: \Archman\BugsBunny\Worker $worker
+ *
  * @event error             发生错误
  *                          参数: string $reason, \Throwable $ex, \Archman\BugsBunny\Worker $worker
  *                          $reason enum:
@@ -113,6 +116,10 @@ class Worker extends AbstractWorker
 
             $this->errorlessEmit('patrolling');
         }
+
+        if (!$this->passiveShutdown) {
+            $this->errorlessEmit('shutdown');
+        }
     }
 
     /**
@@ -179,6 +186,7 @@ class Worker extends AbstractWorker
 
         if ($this->noMore) {
             if ($this->passiveShutdown) {
+                $this->errorlessEmit('shutdown');
                 $this->sendMessage(new Message(MessageTypeEnum::KILL_ME, ''));
             } else {
                 $this->sendMessage(new Message(MessageTypeEnum::I_QUIT, ''));
