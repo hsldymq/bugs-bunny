@@ -586,7 +586,7 @@ class Dispatcher extends AbstractMaster implements ConsumerHandlerInterface
                         $this->workersInfo,
                         $this->idMap,
                         $this->workerFactory,
-                        $this->workerScheduler,
+                        $this->workerScheduler
                     );
                 });
             } catch (\Throwable $e) {
