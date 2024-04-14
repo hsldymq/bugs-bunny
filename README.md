@@ -1,5 +1,5 @@
 # Bugs Bunny: 弹性的多进程RabbitMQ Consumer
-![tests](https://github.com/hsldymq/bugs-bunny/actions/workflows/unit-tests.yml/badge.svg)
+[![Test](https://github.com/hsldymq/bugs-bunny/actions/workflows/test.yml/badge.svg)](https://github.com/hsldymq/bugs-bunny/actions/workflows/test.yml/badge.svg)
 
 ### 运行要求
 * PHP: ^7.1 || ^8.0
